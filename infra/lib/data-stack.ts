@@ -27,14 +27,26 @@ export class DataStack extends Stack {
     )
 
     const fixtureFetcher = new lambda.Function(this, 'FixtureFetcher', {
-      runtime: lambda.Runtime.NODEJS_22_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(process.cwd(), 'lambda', 'fixture-fetcher')),
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: 'handler.lambda_handler',
+      code: lambda.Code.fromAsset(path.join(process.cwd(), 'lambda', 'fixture-fetcher'), {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
+          command: [
+            'bash',
+            '-c',
+            'python -m pip install --no-cache-dir -r requirements.txt -t /asset-output && cp handler.py /asset-output/handler.py',
+          ],
+        },
+      }),
       description: 'Fetch and normalize football fixtures before publishing them to S3.',
-      timeout: Duration.seconds(30),
+      timeout: Duration.seconds(90),
       environment: {
         DATA_BUCKET_NAME: props.dataBucket.bucketName,
         API_KEY_PARAMETER_NAME: apiKeyParameterName,
+        FIXTURE_OBJECT_KEY: 'data/fixtures.json',
+        LOOKBACK_DAYS: '1',
+        LOOKAHEAD_DAYS: '30',
       },
     })
 
