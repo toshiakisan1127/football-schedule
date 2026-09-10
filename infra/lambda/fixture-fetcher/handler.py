@@ -257,7 +257,7 @@ def _normalize_fixture(
 
     if not isinstance(kickoff, str):
         raise FixtureDataError(f"Invalid kickoff for fixture {fixture_id}: {kickoff!r}")
-    if not isinstance(status_value, str):
+    if status_value is not None and not isinstance(status_value, str):
         raise FixtureDataError(
             f"Invalid status for fixture {fixture_id}: {status_value!r}"
         )
@@ -296,7 +296,11 @@ def _normalize_fixture(
     }
 
 
-def _normalize_status(status_value: str) -> str:
+def _normalize_status(status_value: str | None) -> str:
+    # KickoffAPI production data can return null for fixtures that have not started yet.
+    if status_value is None:
+        return "scheduled"
+
     normalized = status_value.strip().lower()
     if normalized in SCHEDULED_STATUSES:
         return "scheduled"
