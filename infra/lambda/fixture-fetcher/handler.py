@@ -28,13 +28,13 @@ CANCELLED_STATUSES = {"canc", "abd", "cancelled", "canceled"}
 @dataclass(frozen=True)
 class Competition:
     app_id: str
-    api_league_id: str
+    api_league_id: int
     name: str
     country: str
 
 
 COMPETITIONS = (
-    Competition("epl", "en.1", "Premier League", "England"),
+    Competition("epl", 39, "Premier League", "England"),
 )
 
 _http = requests.Session()
@@ -58,7 +58,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     season = _season_for(today_jst)
 
     LOGGER.info(
-        "Starting fixture refresh: from=%s to=%s season=%d competitions=%d",
+        "Starting fixture refresh: provider=v1 from=%s to=%s season=%d competitions=%d",
         from_date,
         to_date,
         season,
@@ -95,7 +95,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         fixtures.extend(normalized)
 
         LOGGER.info(
-            "Fetched competition: app_id=%s api_league_id=%s season=%d raw=%d kept=%d",
+            "Fetched competition: provider=v1 app_id=%s api_league_id=%s season=%d raw=%d kept=%d",
             competition.app_id,
             competition.api_league_id,
             season,
@@ -144,9 +144,7 @@ def _fetch_competition_fixtures(
     to_date: date,
 ) -> list[dict[str, Any]]:
     fixtures: list[dict[str, Any]] = []
-    cursor: str | None = None
     page = 1
-    seen_cursors: set[str] = set()
 
     while True:
         params: dict[str, Any] = {
@@ -155,58 +153,40 @@ def _fetch_competition_fixtures(
             "from": from_date.isoformat(),
             "to": to_date.isoformat(),
         }
-        if cursor is not None:
-            params["cursor"] = cursor
-        elif page > 1:
+        if page > 1:
             params["page"] = page
 
         payload = _get_api_json(
-            "/api/v2/fixtures",
+            "/api/v1/fixtures",
             api_key=api_key,
             params=params,
         )
 
-        response_items = payload.get("data")
+        response_items = payload.get("response")
         if not isinstance(response_items, list):
             raise FixtureDataError(
-                f"KickoffAPI response is missing a data list for {competition.app_id}"
+                f"KickoffAPI v1 response is missing a response list for {competition.app_id}"
             )
 
         diagnostics = [_raw_fixture_diagnostic(item) for item in response_items]
         LOGGER.info(
-            "Raw KickoffAPI fixtures: app_id=%s page=%d cursor=%s items=%s",
+            "Raw KickoffAPI v1 fixtures: app_id=%s page=%d items=%s",
             competition.app_id,
             page,
-            cursor,
             json.dumps(diagnostics, ensure_ascii=False, separators=(",", ":")),
         )
         fixtures.extend(response_items)
 
-        meta = payload.get("meta")
-        if isinstance(meta, dict):
-            next_cursor = meta.get("nextCursor")
-            if next_cursor not in (None, ""):
-                next_cursor_value = str(next_cursor)
-                if next_cursor_value in seen_cursors:
-                    raise FixtureDataError(
-                        f"KickoffAPI repeated cursor for {competition.app_id}: "
-                        f"{next_cursor_value!r}"
-                    )
-                seen_cursors.add(next_cursor_value)
-                cursor = next_cursor_value
-                page += 1
-                continue
+        paging = payload.get("paging")
+        if not isinstance(paging, dict):
             return fixtures
 
-        # KickoffAPI's migration documentation describes page/totalPages at the
-        # top level, while current production responses use meta.nextCursor.
-        # Supporting both keeps the fetcher tolerant of either v2 envelope.
         try:
-            current_page = int(payload.get("page", page))
-            total_pages = int(payload.get("totalPages", current_page))
+            current_page = int(paging.get("current", page))
+            total_pages = int(paging.get("total", current_page))
         except (TypeError, ValueError) as exc:
             raise FixtureDataError(
-                f"Invalid KickoffAPI paging data for {competition.app_id}"
+                f"Invalid KickoffAPI v1 paging data for {competition.app_id}"
             ) from exc
 
         if current_page >= total_pages:
@@ -218,13 +198,22 @@ def _raw_fixture_diagnostic(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {"type": type(raw).__name__}
 
-    home = raw.get("home") or raw.get("homeTeam")
-    away = raw.get("away") or raw.get("awayTeam")
+    fixture = raw.get("fixture")
+    if isinstance(fixture, dict):
+        fixture_id = fixture.get("id")
+        kickoff = fixture.get("date")
+        status = fixture.get("status")
+    else:
+        fixture_id = raw.get("id")
+        kickoff = raw.get("date")
+        status = raw.get("status") or raw.get("statusShort")
+
+    home, away = _raw_teams(raw)
 
     return {
-        "id": raw.get("id"),
-        "date": raw.get("date"),
-        "status": raw.get("status"),
+        "id": fixture_id,
+        "date": kickoff,
+        "status": status,
         "home": _raw_team_diagnostic(home),
         "away": _raw_team_diagnostic(away),
     }
@@ -234,6 +223,13 @@ def _raw_team_diagnostic(team: Any) -> Any:
     if not isinstance(team, dict):
         return team
     return {"id": team.get("id"), "name": team.get("name")}
+
+
+def _raw_teams(raw: dict[str, Any]) -> tuple[Any, Any]:
+    teams = raw.get("teams")
+    if isinstance(teams, dict):
+        return teams.get("home"), teams.get("away")
+    return raw.get("homeTeam") or raw.get("home"), raw.get("awayTeam") or raw.get("away")
 
 
 def _get_api_json(
@@ -270,10 +266,7 @@ def _collect_team_ids(raw_fixtures: list[dict[str, Any]]) -> dict[str, str]:
     for raw in raw_fixtures:
         if not isinstance(raw, dict):
             continue
-        for team in (
-            raw.get("home") or raw.get("homeTeam"),
-            raw.get("away") or raw.get("awayTeam"),
-        ):
+        for team in _raw_teams(raw):
             if not isinstance(team, dict):
                 continue
             name = team.get("name")
@@ -307,11 +300,17 @@ def _normalize_fixture(
     team_ids: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     try:
-        fixture_id = raw["id"]
-        kickoff = raw["date"]
+        fixture = raw.get("fixture")
+        if isinstance(fixture, dict):
+            fixture_id = fixture["id"]
+            kickoff = fixture["date"]
+            raw_status = fixture.get("status")
+        else:
+            fixture_id = raw["id"]
+            kickoff = raw["date"]
+            raw_status = raw.get("status") or raw.get("statusShort")
 
-        home = raw.get("home") or raw.get("homeTeam")
-        away = raw.get("away") or raw.get("awayTeam")
+        home, away = _raw_teams(raw)
         if not isinstance(home, dict) or not isinstance(away, dict):
             raise KeyError("home/away teams")
 
@@ -323,7 +322,6 @@ def _normalize_fixture(
         home_id = _normalize_team_id(home.get("id"), home_name, team_ids)
         away_id = _normalize_team_id(away.get("id"), away_name, team_ids)
 
-        raw_status = raw["status"]
         if isinstance(raw_status, dict):
             status_value = raw_status.get("short") or raw_status.get("long")
         else:
@@ -340,13 +338,17 @@ def _normalize_fixture(
             f"Invalid status for fixture {fixture_id}: {status_value!r}"
         )
 
-    score_raw = raw.get("score")
-    if isinstance(score_raw, dict):
-        home_goals = score_raw.get("home")
-        away_goals = score_raw.get("away")
+    goals = raw.get("goals")
+    if isinstance(goals, dict):
+        home_goals = goals.get("home")
+        away_goals = goals.get("away")
     else:
         home_goals = raw.get("homeScore")
         away_goals = raw.get("awayScore")
+        if home_goals is None and isinstance(home, dict):
+            home_goals = home.get("goals")
+        if away_goals is None and isinstance(away, dict):
+            away_goals = away.get("goals")
 
     score = None
     if isinstance(home_goals, int) and isinstance(away_goals, int):
@@ -369,13 +371,11 @@ def _normalize_fixture(
         },
         "kickoff": _utc_iso(kickoff),
         "status": _normalize_status(status_value),
-        # Keep live scores in JSON; the frontend decides when they are safe to show.
         "score": score,
     }
 
 
 def _normalize_status(status_value: str | None) -> str:
-    # KickoffAPI production data can return null for fixtures that have not started yet.
     if status_value is None:
         return "scheduled"
 
