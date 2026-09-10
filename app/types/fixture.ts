@@ -1,4 +1,4 @@
-export type FixtureStatus = 'scheduled' | 'postponed' | 'cancelled'
+export type FixtureStatus = 'scheduled' | 'finished' | 'postponed' | 'cancelled'
 
 export interface FixtureTeam {
   id: string
@@ -11,6 +11,11 @@ export interface FixtureCompetition {
   country: string
 }
 
+export interface FixtureResult {
+  home: number
+  away: number
+}
+
 export interface Fixture {
   id: string
   competition: FixtureCompetition
@@ -18,6 +23,7 @@ export interface Fixture {
   away: FixtureTeam
   kickoff: string
   status: FixtureStatus
+  result: FixtureResult | null
 }
 
 export interface FixtureDocument {
