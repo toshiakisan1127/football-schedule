@@ -1,0 +1,57 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'public/**'
+      - 'nuxt.config.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/frontend-ci.yml'
+      - '.github/workflows/deploy-site.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'public/**'
+      - 'nuxt.config.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/frontend-ci.yml'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package.json
+            infra/package.json
+
+      - name: Install dependencies
+        run: npm install --prefer-offline --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Generate static site
+        env:
+          NUXT_APP_BASE_URL: /
+        run: npm run generate

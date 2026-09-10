@@ -112,13 +112,13 @@ const localDateKeyFromDate = (date: Date) => {
 const localDateKey = (iso: string) => localDateKeyFromDate(new Date(iso))
 
 const addDaysToDateKey = (dateKey: string, days: number) => {
-  const [year, month, day] = dateKey.split('-').map(Number)
+  const [year = 0, month = 1, day = 1] = dateKey.split('-').map(Number)
   const next = new Date(Date.UTC(year, month - 1, day + days))
   return next.toISOString().slice(0, 10)
 }
 
 const dayOfWeekFromDateKey = (dateKey: string) => {
-  const [year, month, day] = dateKey.split('-').map(Number)
+  const [year = 0, month = 1, day = 1] = dateKey.split('-').map(Number)
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay()
 }
 
