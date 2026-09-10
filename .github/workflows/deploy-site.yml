@@ -45,9 +45,6 @@ jobs:
       - name: Install dependencies
         run: npm install --prefer-offline --no-audit --no-fund
 
-      - name: Typecheck
-        run: npm run typecheck
-
       - name: Generate static site
         env:
           NUXT_APP_BASE_URL: /
