@@ -2,6 +2,17 @@
 
 サッカーの**試合日程だけ**を、見やすく日本時間で確認するためのWebアプリです。
 
+## CI
+
+mainブランチで直近に完了したWorkflowの実行時間です。Workflow完了時に自動更新されます。
+
+<!-- ci-duration-lambda:start -->
+- **Lambda tests:** ✅ **37s** · [run #21](https://github.com/toshiakisan1127/football-schedule/actions/runs/34523418424) · 2026-09-11 04:57 JST
+<!-- ci-duration-lambda:end -->
+<!-- ci-duration-deploy:start -->
+- **Deploy AWS infrastructure:** ✅ **2m 52s** · [run #12](https://github.com/toshiakisan1127/football-schedule/actions/runs/34523418427) · 2026-09-11 05:00 JST
+<!-- ci-duration-deploy:end -->
+
 ## コンセプト
 
 > 日本時間で、見たいサッカーの試合時間だけすぐ分かる。

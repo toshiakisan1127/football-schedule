@@ -1,0 +1,108 @@
+name: Update CI duration
+
+on:
+  workflow_run:
+    workflows:
+      - Lambda tests
+      - Deploy AWS infrastructure
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-ci-duration
+  cancel-in-progress: false
+
+jobs:
+  update-readme:
+    if: github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Update latest CI duration in README
+        env:
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
+          RUN_UPDATED_AT: ${{ github.event.workflow_run.updated_at }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const workflow = process.env.WORKFLOW_NAME;
+          const markers = {
+            'Lambda tests': ['<!-- ci-duration-lambda:start -->', '<!-- ci-duration-lambda:end -->'],
+            'Deploy AWS infrastructure': ['<!-- ci-duration-deploy:start -->', '<!-- ci-duration-deploy:end -->'],
+          };
+
+          if (!markers[workflow]) {
+            throw new Error(`Unsupported workflow: ${workflow}`);
+          }
+
+          const [startMarker, endMarker] = markers[workflow];
+          const startedAt = new Date(process.env.RUN_STARTED_AT);
+          const updatedAt = new Date(process.env.RUN_UPDATED_AT);
+          const durationSeconds = Math.max(0, Math.round((updatedAt - startedAt) / 1000));
+          const minutes = Math.floor(durationSeconds / 60);
+          const seconds = durationSeconds % 60;
+          const duration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+          const icons = {
+            success: '✅',
+            failure: '❌',
+            cancelled: '⚪',
+            skipped: '⚪',
+          };
+          const icon = icons[process.env.RUN_CONCLUSION] ?? '🔵';
+
+          const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Tokyo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+          }).formatToParts(updatedAt);
+          const value = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+          const timestamp = `${value.year}-${value.month}-${value.day} ${value.hour}:${value.minute} JST`;
+
+          const block = [
+            startMarker,
+            `- **${workflow}:** ${icon} **${duration}** · [run #${process.env.RUN_NUMBER}](${process.env.RUN_URL}) · ${timestamp}`,
+            endMarker,
+          ].join('\n');
+
+          const readmePath = 'README.md';
+          const readme = fs.readFileSync(readmePath, 'utf8');
+          const pattern = new RegExp(`${startMarker}[\\s\\S]*?${endMarker}`);
+          if (!pattern.test(readme)) {
+            throw new Error(`CI duration markers not found for ${workflow}`);
+          }
+
+          fs.writeFileSync(readmePath, readme.replace(pattern, block));
+          NODE
+
+      - name: Commit README update
+        run: |
+          if git diff --quiet -- README.md; then
+            echo 'README is already up to date.'
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md
+          git commit -m 'docs: update latest CI duration [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
