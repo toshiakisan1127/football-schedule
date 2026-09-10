@@ -10,31 +10,34 @@ import handler
 
 def raw_fixture(
     *,
-    fixture_id: str = "fx_1001",
+    fixture_id: int = 1001,
     kickoff: str = "2026-09-12T06:00:00.000Z",
     status: str = "NS",
     home_goals: int | None = None,
     away_goals: int | None = None,
 ) -> dict:
     return {
-        "id": fixture_id,
-        "date": kickoff,
-        "status": {
-            "long": "Not Started" if status == "NS" else "Match Finished",
-            "short": status,
-            "elapsed": None,
+        "fixture": {
+            "id": fixture_id,
+            "date": kickoff,
+            "status": {
+                "long": "Not Started" if status == "NS" else "Match Finished",
+                "short": status,
+                "elapsed": None,
+            },
         },
         "league": {
-            "id": "provider-league",
-            "name": "Provider League",
+            "id": 39,
+            "name": "Premier League",
             "season": 2026,
         },
-        "home": {"id": "tm_home", "name": "Home FC"},
-        "away": {"id": "tm_away", "name": "Away FC"},
-        "score": {
+        "teams": {
+            "home": {"id": 40, "name": "Home FC"},
+            "away": {"id": 33, "name": "Away FC"},
+        },
+        "goals": {
             "home": home_goals,
             "away": away_goals,
-            "halftime": {"home": None, "away": None},
         },
     }
 
@@ -43,9 +46,9 @@ def competition() -> handler.Competition:
     return handler.COMPETITIONS[0]
 
 
-def test_mvp_fetches_only_premier_league() -> None:
+def test_mvp_fetches_only_premier_league_v1() -> None:
     assert [item.app_id for item in handler.COMPETITIONS] == ["epl"]
-    assert [item.api_league_id for item in handler.COMPETITIONS] == ["en.1"]
+    assert [item.api_league_id for item in handler.COMPETITIONS] == [39]
 
 
 @pytest.mark.parametrize(
@@ -72,41 +75,39 @@ def test_unknown_status_fails_closed() -> None:
         handler._normalize_status("SOMETHING_NEW")
 
 
-def test_normalize_fixture_uses_kickoffapi_production_shape() -> None:
+def test_normalize_fixture_uses_documented_v1_shape() -> None:
     normalized = handler._normalize_fixture(raw_fixture(), competition())
 
     assert normalized == {
-        "id": "fx_1001",
+        "id": "1001",
         "competition": {
             "id": "epl",
             "name": "Premier League",
             "country": "England",
         },
-        "home": {"id": "tm_home", "name": "Home FC"},
-        "away": {"id": "tm_away", "name": "Away FC"},
+        "home": {"id": "40", "name": "Home FC"},
+        "away": {"id": "33", "name": "Away FC"},
         "kickoff": "2026-09-12T06:00:00Z",
         "status": "scheduled",
         "score": None,
     }
 
 
-def test_normalize_fixture_also_accepts_documented_v2_shape() -> None:
+def test_normalize_fixture_accepts_flat_v1_docs_example() -> None:
     normalized = handler._normalize_fixture(
         {
-            "id": "fx_documented",
+            "id": 1035039,
             "date": "2026-09-12T15:00:00+09:00",
-            "status": "finished",
-            "homeTeam": {"id": "tm_home", "name": "Home FC"},
-            "awayTeam": {"id": "tm_away", "name": "Away FC"},
-            "homeScore": 2,
-            "awayScore": 1,
+            "statusShort": "FT",
+            "homeTeam": {"id": 40, "name": "Burnley", "goals": 0},
+            "awayTeam": {"id": 50, "name": "Manchester City", "goals": 3},
         },
         competition(),
     )
 
     assert normalized["kickoff"] == "2026-09-12T06:00:00Z"
     assert normalized["status"] == "finished"
-    assert normalized["score"] == {"home": 2, "away": 1}
+    assert normalized["score"] == {"home": 0, "away": 3}
 
 
 def test_live_score_is_preserved_in_json_data() -> None:
@@ -153,21 +154,18 @@ def test_season_uses_start_year(reference_date: date, expected_season: int) -> N
     assert handler._season_for(reference_date) == expected_season
 
 
-def test_fetch_competition_fixtures_follows_cursor_pagination(
+def test_fetch_competition_fixtures_uses_v1_range_and_paging(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[dict] = []
 
     def fake_get_api_json(path: str, *, api_key: str, params: dict) -> dict:
         calls.append({"path": path, "api_key": api_key, "params": params.copy()})
-        if "cursor" not in params:
-            return {
-                "data": [raw_fixture(fixture_id="fx_1")],
-                "meta": {"count": 1, "cursor": 0, "nextCursor": "200"},
-            }
+        page = params.get("page", 1)
         return {
-            "data": [raw_fixture(fixture_id="fx_2")],
-            "meta": {"count": 1, "cursor": 200, "nextCursor": None},
+            "response": [raw_fixture(fixture_id=page)],
+            "results": 1,
+            "paging": {"current": page, "total": 2},
         }
 
     monkeypatch.setattr(handler, "_get_api_json", fake_get_api_json)
@@ -180,46 +178,37 @@ def test_fetch_competition_fixtures_follows_cursor_pagination(
         to_date=date(2026, 10, 11),
     )
 
-    assert [item["id"] for item in fixtures] == ["fx_1", "fx_2"]
+    assert [item["fixture"]["id"] for item in fixtures] == [1, 2]
     assert [call["path"] for call in calls] == [
-        "/api/v2/fixtures",
-        "/api/v2/fixtures",
+        "/api/v1/fixtures",
+        "/api/v1/fixtures",
     ]
     assert calls[0]["params"] == {
-        "league": "en.1",
+        "league": 39,
         "season": 2026,
         "from": "2026-09-10",
         "to": "2026-10-11",
     }
-    assert calls[1]["params"]["cursor"] == "200"
+    assert calls[1]["params"]["page"] == 2
 
 
-def test_fetch_competition_fixtures_supports_documented_page_pagination(
+def test_fetch_competition_fixtures_rejects_missing_v1_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[dict] = []
-
-    def fake_get_api_json(path: str, *, api_key: str, params: dict) -> dict:
-        calls.append(params.copy())
-        page = params.get("page", 1)
-        return {
-            "data": [raw_fixture(fixture_id=f"fx_{page}")],
-            "page": page,
-            "totalPages": 2,
-        }
-
-    monkeypatch.setattr(handler, "_get_api_json", fake_get_api_json)
-
-    fixtures = handler._fetch_competition_fixtures(
-        api_key="secret",
-        competition=competition(),
-        season=2026,
-        from_date=date(2026, 9, 10),
-        to_date=date(2026, 10, 11),
+    monkeypatch.setattr(
+        handler,
+        "_get_api_json",
+        lambda *args, **kwargs: {"results": 0, "paging": {"current": 1, "total": 1}},
     )
 
-    assert [item["id"] for item in fixtures] == ["fx_1", "fx_2"]
-    assert calls[1]["page"] == 2
+    with pytest.raises(handler.FixtureDataError, match="missing a response list"):
+        handler._fetch_competition_fixtures(
+            api_key="secret",
+            competition=competition(),
+            season=2026,
+            from_date=date(2026, 9, 10),
+            to_date=date(2026, 10, 11),
+        )
 
 
 def test_api_uses_kickoff_header_and_rejects_errors(
@@ -241,7 +230,7 @@ def test_api_uses_kickoff_header_and_rejects_errors(
     monkeypatch.setattr(handler._http, "get", fake_get)
 
     with pytest.raises(handler.FixtureDataError, match="KickoffAPI returned errors"):
-        handler._get_api_json("/api/v2/fixtures", api_key="secret", params={})
+        handler._get_api_json("/api/v1/fixtures", api_key="secret", params={})
 
     assert captured["headers"] == {"x-api-key": "secret"}
 
@@ -282,7 +271,7 @@ def test_lambda_publishes_once_after_premier_league_succeeds(
     def fake_fetch(**kwargs) -> list[dict]:
         return [
             raw_fixture(
-                fixture_id="fx_epl",
+                fixture_id=1001,
                 kickoff="2026-09-12T06:00:00Z",
                 status="FT",
                 home_goals=2,
