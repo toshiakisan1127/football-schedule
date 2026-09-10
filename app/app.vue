@@ -9,7 +9,7 @@ const baseURL = runtimeConfig.app.baseURL.endsWith('/')
   ? runtimeConfig.app.baseURL
   : `${runtimeConfig.app.baseURL}/`
 
-const mockDataVersion = '20260911-004'
+const mockDataVersion = '20260911-005'
 const fixturesUrl = `${baseURL}data/fixtures.json?v=${mockDataVersion}`
 
 const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
@@ -116,14 +116,15 @@ const timeLabel = (iso: string) =>
   }).format(new Date(iso))
 
 const statusLabel = (fixture: Fixture) => {
+  if (fixture.status === 'live') return '試合中'
   if (fixture.status === 'postponed') return '延期'
   if (fixture.status === 'cancelled') return '中止'
   return null
 }
 
 const resultLabel = (fixture: Fixture) => {
-  if (!showResults.value || fixture.status !== 'finished' || !fixture.result) return null
-  return `${fixture.result.home}–${fixture.result.away}`
+  if (!showResults.value || fixture.status !== 'finished' || !fixture.score) return null
+  return `${fixture.score.home}–${fixture.score.away}`
 }
 
 const filteredFixtures = computed(() => {
@@ -306,7 +307,11 @@ onMounted(() => {
               <span v-if="resultLabel(fixture)" class="fixture-result">
                 {{ resultLabel(fixture) }}
               </span>
-              <span v-else-if="statusLabel(fixture)" class="fixture-status">
+              <span
+                v-else-if="statusLabel(fixture)"
+                class="fixture-status"
+                :class="{ 'fixture-status--live': fixture.status === 'live' }"
+              >
                 {{ statusLabel(fixture) }}
               </span>
             </div>
