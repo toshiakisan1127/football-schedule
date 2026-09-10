@@ -6,24 +6,24 @@
 
 > 日本時間で、見たいサッカーの試合時間だけすぐ分かる。
 
-ニュース・順位表・試合結果を主役にせず、Jリーグと欧州主要リーグ／欧州カップ戦の「いつ試合があるか」に特化します。
+ニュース・順位表を主役にせず、「いつ試合があるか」を素早く確認できることに特化します。試合結果は初期状態では隠し、必要な場合だけ表示できます。
 
 ## MVP
 
-- J1
+まずはKickoffAPI v2で取得できる以下の3大会に絞ります。
+
 - Premier League
 - LaLiga
-- Serie A
-- Bundesliga
-- Ligue 1
 - UEFA Champions League
-- UEFA Europa League
 - 今日 / 明日 / 今週末の切り替え
 - 大会フィルター
 - お気に入りクラブの保存（localStorage）
 - キックオフ時刻を利用者のローカル時刻で表示
-- postponed / cancelled の表示
+- live / finished / postponed / cancelled の状態管理
+- 試合結果の表示・非表示切り替え
 - データ最終更新時刻の表示
+
+J1はKickoffAPIの2026/27シーズン対応を確認できていないため、一旦MVP対象外です。
 
 ## アーキテクチャ
 
@@ -31,9 +31,9 @@
 EventBridge Scheduler
         |
         v
-      Lambda  -----> Football data API
+      Lambda  -----> KickoffAPI v2
         |
-        | normalize
+        | normalize / filter
         v
 S3 (data/fixtures.json)
         |
@@ -65,6 +65,7 @@ S3 (data/fixtures.json)
 - Amazon CloudFront
 - AWS Lambda
 - Amazon EventBridge Scheduler
+- KickoffAPI v2
 
 ## Status
 
