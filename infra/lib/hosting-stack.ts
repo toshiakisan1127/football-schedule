@@ -105,6 +105,38 @@ export class HostingStack extends Stack {
       }),
     )
 
+    deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:ListBucket', 's3:GetBucketLocation'],
+        resources: [this.siteBucket.bucketArn],
+      }),
+    )
+
+    deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+        resources: [this.siteBucket.arnForObjects('*')],
+      }),
+    )
+
+    deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudformation:DescribeStacks'],
+        resources: [
+          `arn:${this.partition}:cloudformation:${AWS_REGION}:${this.account}:stack/${this.stackName}/*`,
+        ],
+      }),
+    )
+
+    deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudfront:CreateInvalidation'],
+        resources: [
+          `arn:${this.partition}:cloudfront::${this.account}:distribution/${this.distribution.distributionId}`,
+        ],
+      }),
+    )
+
     new CfnOutput(this, 'SiteBucketName', {
       value: this.siteBucket.bucketName,
     })
