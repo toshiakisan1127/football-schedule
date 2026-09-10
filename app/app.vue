@@ -18,7 +18,7 @@ const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
 })
 
 const selectedFilter = ref<DateFilter>('all')
-const selectedCompetition = ref('all')
+const selectedCompetitions = ref<Set<string>>(new Set())
 const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
 const showResults = ref(false)
@@ -39,17 +39,39 @@ const competitionFilters = computed(() => {
     }
   }
 
-  return [
-    { id: 'all', name: '全リーグ', country: '' },
-    ...[...competitions.values()].sort((a, b) =>
-      `${a.country}-${a.name}`.localeCompare(`${b.country}-${b.name}`),
-    ),
-  ]
+  return [...competitions.values()].sort((a, b) =>
+    `${a.country}-${a.name}`.localeCompare(`${b.country}-${b.name}`),
+  )
 })
 
-const selectedCompetitionLabel = computed(() =>
-  competitionFilters.value.find((competition) => competition.id === selectedCompetition.value)?.name ?? '全リーグ',
-)
+const isAllCompetitionsSelected = computed(() => selectedCompetitions.value.size === 0)
+
+const persistCompetitionSelection = () => {
+  localStorage.setItem(
+    'football-schedule-competitions',
+    JSON.stringify([...selectedCompetitions.value]),
+  )
+}
+
+const selectAllCompetitions = () => {
+  selectedCompetitions.value = new Set()
+  persistCompetitionSelection()
+}
+
+const toggleCompetition = (competitionId: string) => {
+  const next = new Set(selectedCompetitions.value)
+
+  if (next.size === 0) {
+    next.add(competitionId)
+  } else if (next.has(competitionId)) {
+    next.delete(competitionId)
+  } else {
+    next.add(competitionId)
+  }
+
+  selectedCompetitions.value = next.size === 0 ? new Set() : next
+  persistCompetitionSelection()
+}
 
 const localDateKeyFromDate = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -130,8 +152,8 @@ const resultLabel = (fixture: Fixture) => {
 const filteredFixtures = computed(() => {
   let fixtures = data.value?.fixtures ?? []
 
-  if (selectedCompetition.value !== 'all') {
-    fixtures = fixtures.filter((fixture) => fixture.competition.id === selectedCompetition.value)
+  if (selectedCompetitions.value.size > 0) {
+    fixtures = fixtures.filter((fixture) => selectedCompetitions.value.has(fixture.competition.id))
   }
 
   if (!targetDateKeys.value) return fixtures
@@ -174,9 +196,7 @@ const generatedAtLabel = computed(() => {
 })
 
 const emptyMessage = computed(() => {
-  const competitionPrefix = selectedCompetition.value === 'all'
-    ? ''
-    : `${selectedCompetitionLabel.value}の`
+  const competitionPrefix = isAllCompetitionsSelected.value ? '' : '選択したリーグの'
 
   if (selectedFilter.value === 'all') return `${competitionPrefix}表示できる試合がありません。`
   if (selectedFilter.value === 'today') return `${competitionPrefix}今日の試合はありません。`
@@ -212,6 +232,18 @@ onMounted(() => {
 
   applyTheme(initialTheme)
   showResults.value = localStorage.getItem('football-schedule-show-results') === 'true'
+
+  const savedCompetitions = localStorage.getItem('football-schedule-competitions')
+  if (savedCompetitions) {
+    try {
+      const parsed = JSON.parse(savedCompetitions)
+      if (Array.isArray(parsed) && parsed.every((id) => typeof id === 'string')) {
+        selectedCompetitions.value = new Set(parsed)
+      }
+    } catch {
+      localStorage.removeItem('football-schedule-competitions')
+    }
+  }
 })
 </script>
 
@@ -263,15 +295,24 @@ onMounted(() => {
       </button>
     </nav>
 
-    <nav class="quick-filters quick-filters--league" aria-label="リーグフィルター">
+    <nav class="quick-filters quick-filters--league" aria-label="表示するリーグ">
+      <button
+        type="button"
+        class="filter-button filter-button--league"
+        :class="{ 'filter-button--active': isAllCompetitionsSelected }"
+        :aria-pressed="isAllCompetitionsSelected"
+        @click="selectAllCompetitions"
+      >
+        全リーグ
+      </button>
       <button
         v-for="competition in competitionFilters"
         :key="competition.id"
         type="button"
         class="filter-button filter-button--league"
-        :class="{ 'filter-button--active': selectedCompetition === competition.id }"
-        :aria-pressed="selectedCompetition === competition.id"
-        @click="selectedCompetition = competition.id"
+        :class="{ 'filter-button--active': selectedCompetitions.has(competition.id) }"
+        :aria-pressed="selectedCompetitions.has(competition.id)"
+        @click="toggleCompetition(competition.id)"
       >
         {{ competition.name }}
       </button>
