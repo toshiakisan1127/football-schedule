@@ -208,7 +208,7 @@ def _get_api_json(
         f"{API_BASE_URL}{path}",
         headers={"x-api-key": api_key},
         params=params,
-        timeout=(3.05, 30),
+        timeout=(3.05, 180),
     )
     response.raise_for_status()
 
