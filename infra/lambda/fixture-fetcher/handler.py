@@ -30,22 +30,13 @@ class Competition:
     api_league_id: int
     name: str
     country: str
-    calendar_year_season: bool = False
 
 
 COMPETITIONS = (
-    Competition("j1", 98, "J1 League", "Japan", calendar_year_season=True),
     Competition("epl", 39, "Premier League", "England"),
-    Competition("laliga", 140, "LaLiga", "Spain"),
-    Competition("serie-a", 135, "Serie A", "Italy"),
-    Competition("bundesliga", 78, "Bundesliga", "Germany"),
-    Competition("ligue-1", 61, "Ligue 1", "France"),
-    Competition("ucl", 2, "UEFA Champions League", "Europe"),
-    Competition("uel", 3, "UEFA Europa League", "Europe"),
+    Competition("j1", 98, "J1 League", "Japan"),
 )
 
-_ssm = boto3.client("ssm")
-_s3 = boto3.client("s3")
 _http = requests.Session()
 _http.headers.update({"User-Agent": "football-schedule-fixture-fetcher/1.0"})
 
@@ -91,7 +82,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
             "Fetched competition: app_id=%s api_league_id=%d season=%d fixtures=%d",
             competition.app_id,
             competition.api_league_id,
-            _season_for(competition, today_jst),
+            _season_for(today_jst),
             len(normalized),
         )
 
@@ -109,14 +100,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     }
 
     body = json.dumps(document, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-
-    _s3.put_object(
-        Bucket=bucket_name,
-        Key=object_key,
-        Body=body,
-        ContentType="application/json; charset=utf-8",
-        CacheControl="public, max-age=300",
-    )
+    _publish_document(bucket_name=bucket_name, object_key=object_key, body=body)
 
     LOGGER.info(
         "Published fixture document: bucket=%s key=%s fixtures=%d bytes=%d",
@@ -141,7 +125,7 @@ def _fetch_competition_fixtures(
     from_date: date,
     to_date: date,
 ) -> list[dict[str, Any]]:
-    season = _season_for(competition, from_date)
+    season = _season_for(from_date)
     page = 1
     fixtures: list[dict[str, Any]] = []
 
@@ -265,8 +249,7 @@ def _normalize_fixture(
         },
         "kickoff": _utc_iso(kickoff),
         "status": _normalize_status(status_short),
-        # Preserve score data even for live/suspended matches. The frontend
-        # decides whether it is safe to show it.
+        # Keep live scores in JSON; the frontend decides when they are safe to show.
         "score": score,
     }
 
@@ -301,18 +284,34 @@ def _utc_iso(value: str) -> str:
     )
 
 
-def _season_for(competition: Competition, reference_date: date) -> int:
-    if competition.calendar_year_season:
-        return reference_date.year
+def _season_for(reference_date: date) -> int:
     return reference_date.year if reference_date.month >= 7 else reference_date.year - 1
 
 
 def _load_api_key(parameter_name: str) -> str:
-    response = _ssm.get_parameter(Name=parameter_name, WithDecryption=True)
+    response = _ssm_client().get_parameter(Name=parameter_name, WithDecryption=True)
     value = response.get("Parameter", {}).get("Value")
     if not isinstance(value, str) or not value.strip():
         raise FixtureDataError(f"SSM parameter {parameter_name!r} has no value")
     return value.strip()
+
+
+def _publish_document(*, bucket_name: str, object_key: str, body: bytes) -> None:
+    _s3_client().put_object(
+        Bucket=bucket_name,
+        Key=object_key,
+        Body=body,
+        ContentType="application/json; charset=utf-8",
+        CacheControl="public, max-age=300",
+    )
+
+
+def _ssm_client() -> Any:
+    return boto3.client("ssm")
+
+
+def _s3_client() -> Any:
+    return boto3.client("s3")
 
 
 def _required_env(name: str) -> str:
