@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { Fixture, FixtureDocument } from './types/fixture'
 
-const { data, status, error } = await useFetch<FixtureDocument>('/data/fixtures.json', {
+const runtimeConfig = useRuntimeConfig()
+const baseURL = runtimeConfig.app.baseURL.endsWith('/')
+  ? runtimeConfig.app.baseURL
+  : `${runtimeConfig.app.baseURL}/`
+
+const { data, status, error } = await useFetch<FixtureDocument>(`${baseURL}data/fixtures.json`, {
   server: false,
 })
 
