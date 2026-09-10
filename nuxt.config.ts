@@ -1,7 +1,15 @@
+import tailwindcss from '@tailwindcss/vite'
+
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: true },
-  css: ['~/assets/css/main.css'],
+  css: [
+    '~/assets/css/tailwind.css',
+    '~/assets/css/main.css',
+  ],
+  vite: {
+    plugins: [tailwindcss()],
+  },
   app: {
     head: {
       htmlAttrs: { lang: 'ja' },
