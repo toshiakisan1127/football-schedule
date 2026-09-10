@@ -26,10 +26,13 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          package-manager-cache: false
+          cache: 'npm'
+          cache-dependency-path: |
+            package.json
+            infra/package.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Typecheck
         run: npm run typecheck
