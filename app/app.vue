@@ -19,6 +19,8 @@ const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
 
 const selectedFilter = ref<DateFilter>('all')
 const selectedCompetitions = ref<Set<string>>(new Set())
+const draftCompetitions = ref<Set<string>>(new Set())
+const isLeagueSettingsOpen = ref(false)
 const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
 const showResults = ref(false)
@@ -45,6 +47,12 @@ const competitionFilters = computed(() => {
 })
 
 const isAllCompetitionsSelected = computed(() => selectedCompetitions.value.size === 0)
+const isAllDraftCompetitionsSelected = computed(() => draftCompetitions.value.size === 0)
+
+const selectedCompetitionList = computed(() => {
+  if (isAllCompetitionsSelected.value) return []
+  return competitionFilters.value.filter((competition) => selectedCompetitions.value.has(competition.id))
+})
 
 const persistCompetitionSelection = () => {
   localStorage.setItem(
@@ -53,13 +61,21 @@ const persistCompetitionSelection = () => {
   )
 }
 
-const selectAllCompetitions = () => {
-  selectedCompetitions.value = new Set()
-  persistCompetitionSelection()
+const openLeagueSettings = () => {
+  draftCompetitions.value = new Set(selectedCompetitions.value)
+  isLeagueSettingsOpen.value = true
 }
 
-const toggleCompetition = (competitionId: string) => {
-  const next = new Set(selectedCompetitions.value)
+const closeLeagueSettings = () => {
+  isLeagueSettingsOpen.value = false
+}
+
+const selectAllDraftCompetitions = () => {
+  draftCompetitions.value = new Set()
+}
+
+const toggleDraftCompetition = (competitionId: string) => {
+  const next = new Set(draftCompetitions.value)
 
   if (next.size === 0) {
     next.add(competitionId)
@@ -69,8 +85,13 @@ const toggleCompetition = (competitionId: string) => {
     next.add(competitionId)
   }
 
-  selectedCompetitions.value = next.size === 0 ? new Set() : next
+  draftCompetitions.value = next.size === 0 ? new Set() : next
+}
+
+const saveLeagueSettings = () => {
+  selectedCompetitions.value = new Set(draftCompetitions.value)
   persistCompetitionSelection()
+  closeLeagueSettings()
 }
 
 const localDateKeyFromDate = (date: Date) => {
@@ -220,6 +241,16 @@ const toggleResults = () => {
   localStorage.setItem('football-schedule-show-results', String(showResults.value))
 }
 
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && isLeagueSettingsOpen.value) {
+    closeLeagueSettings()
+  }
+}
+
+watch(isLeagueSettingsOpen, (isOpen) => {
+  document.body.style.overflow = isOpen ? 'hidden' : ''
+})
+
 onMounted(() => {
   currentDate.value = new Date()
 
@@ -244,6 +275,13 @@ onMounted(() => {
       localStorage.removeItem('football-schedule-competitions')
     }
   }
+
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+  document.body.style.overflow = ''
 })
 </script>
 
@@ -295,28 +333,26 @@ onMounted(() => {
       </button>
     </nav>
 
-    <nav class="quick-filters quick-filters--league" aria-label="表示するリーグ">
-      <button
-        type="button"
-        class="filter-button filter-button--league"
-        :class="{ 'filter-button--active': isAllCompetitionsSelected }"
-        :aria-pressed="isAllCompetitionsSelected"
-        @click="selectAllCompetitions"
-      >
-        全リーグ
-      </button>
-      <button
-        v-for="competition in competitionFilters"
-        :key="competition.id"
-        type="button"
-        class="filter-button filter-button--league"
-        :class="{ 'filter-button--active': selectedCompetitions.has(competition.id) }"
-        :aria-pressed="selectedCompetitions.has(competition.id)"
-        @click="toggleCompetition(competition.id)"
-      >
-        {{ competition.name }}
-      </button>
-    </nav>
+    <section class="league-summary" aria-label="表示リーグ設定">
+      <div class="league-summary__header">
+        <span class="league-summary__label">表示リーグ</span>
+        <button type="button" class="league-edit-button" @click="openLeagueSettings">
+          編集
+        </button>
+      </div>
+
+      <div class="selected-leagues">
+        <span v-if="isAllCompetitionsSelected" class="league-pill">全リーグ</span>
+        <span
+          v-for="competition in selectedCompetitionList"
+          v-else
+          :key="competition.id"
+          class="league-pill"
+        >
+          {{ competition.name }}
+        </span>
+      </div>
+    </section>
 
     <p v-if="status === 'pending'" class="state-message">日程を読み込んでいます…</p>
     <p v-else-if="error" class="state-message state-message--error">
@@ -364,5 +400,80 @@ onMounted(() => {
         {{ emptyMessage }}
       </p>
     </section>
+
+    <Teleport to="body">
+      <div
+        v-if="isLeagueSettingsOpen"
+        class="modal-backdrop"
+        @click.self="closeLeagueSettings"
+      >
+        <section
+          class="league-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="league-modal-title"
+        >
+          <header class="league-modal__header">
+            <div>
+              <p class="league-modal__eyebrow">表示設定</p>
+              <h2 id="league-modal-title">表示するリーグ</h2>
+            </div>
+            <button
+              type="button"
+              class="modal-close-button"
+              aria-label="閉じる"
+              @click="closeLeagueSettings"
+            >
+              ×
+            </button>
+          </header>
+
+          <div class="league-options">
+            <button
+              type="button"
+              class="league-option"
+              :class="{ 'league-option--selected': isAllDraftCompetitionsSelected }"
+              :aria-pressed="isAllDraftCompetitionsSelected"
+              @click="selectAllDraftCompetitions"
+            >
+              <span>
+                <strong>全リーグ</strong>
+                <small>すべての日程を表示</small>
+              </span>
+              <span class="league-option__check" aria-hidden="true">
+                {{ isAllDraftCompetitionsSelected ? '✓' : '' }}
+              </span>
+            </button>
+
+            <button
+              v-for="competition in competitionFilters"
+              :key="competition.id"
+              type="button"
+              class="league-option"
+              :class="{ 'league-option--selected': draftCompetitions.has(competition.id) }"
+              :aria-pressed="draftCompetitions.has(competition.id)"
+              @click="toggleDraftCompetition(competition.id)"
+            >
+              <span>
+                <strong>{{ competition.name }}</strong>
+                <small>{{ competition.country }}</small>
+              </span>
+              <span class="league-option__check" aria-hidden="true">
+                {{ draftCompetitions.has(competition.id) ? '✓' : '' }}
+              </span>
+            </button>
+          </div>
+
+          <footer class="league-modal__footer">
+            <button type="button" class="modal-secondary-button" @click="closeLeagueSettings">
+              キャンセル
+            </button>
+            <button type="button" class="modal-primary-button" @click="saveLeagueSettings">
+              完了
+            </button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
   </main>
 </template>
