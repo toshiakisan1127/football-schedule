@@ -14,7 +14,7 @@ const hostingStack = new HostingStack(app, 'FootballScheduleHostingStack', { env
 
 const dataStack = new DataStack(app, 'FootballScheduleDataStack', {
   env,
-  dataBucket: hostingStack.siteBucket,
+  dataBucket: hostingStack.dataBucket,
 })
 
 dataStack.addDependency(hostingStack)
