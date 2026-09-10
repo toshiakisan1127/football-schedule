@@ -18,6 +18,7 @@ const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
 })
 
 const selectedFilter = ref<DateFilter>('all')
+const selectedCompetition = ref('all')
 const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
 
@@ -27,6 +28,27 @@ const dateFilters: { value: DateFilter; label: string }[] = [
   { value: 'tomorrow', label: '明日' },
   { value: 'weekend', label: '今週末' },
 ]
+
+const competitionFilters = computed(() => {
+  const competitions = new Map<string, { id: string; name: string; country: string }>()
+
+  for (const fixture of data.value?.fixtures ?? []) {
+    if (!competitions.has(fixture.competition.id)) {
+      competitions.set(fixture.competition.id, fixture.competition)
+    }
+  }
+
+  return [
+    { id: 'all', name: '全リーグ', country: '' },
+    ...[...competitions.values()].sort((a, b) =>
+      `${a.country}-${a.name}`.localeCompare(`${b.country}-${b.name}`),
+    ),
+  ]
+})
+
+const selectedCompetitionLabel = computed(() =>
+  competitionFilters.value.find((competition) => competition.id === selectedCompetition.value)?.name ?? '全リーグ',
+)
 
 const localDateKeyFromDate = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -99,7 +121,12 @@ const statusLabel = (fixture: Fixture) => {
 }
 
 const filteredFixtures = computed(() => {
-  const fixtures = data.value?.fixtures ?? []
+  let fixtures = data.value?.fixtures ?? []
+
+  if (selectedCompetition.value !== 'all') {
+    fixtures = fixtures.filter((fixture) => fixture.competition.id === selectedCompetition.value)
+  }
+
   if (!targetDateKeys.value) return fixtures
 
   return fixtures.filter((fixture) => targetDateKeys.value?.has(localDateKey(fixture.kickoff)))
@@ -140,10 +167,14 @@ const generatedAtLabel = computed(() => {
 })
 
 const emptyMessage = computed(() => {
-  if (selectedFilter.value === 'all') return '表示できる試合がありません。'
-  if (selectedFilter.value === 'today') return '今日の試合はありません。'
-  if (selectedFilter.value === 'tomorrow') return '明日の試合はありません。'
-  return '今週末の試合はありません。'
+  const competitionPrefix = selectedCompetition.value === 'all'
+    ? ''
+    : `${selectedCompetitionLabel.value}の`
+
+  if (selectedFilter.value === 'all') return `${competitionPrefix}表示できる試合がありません。`
+  if (selectedFilter.value === 'today') return `${competitionPrefix}今日の試合はありません。`
+  if (selectedFilter.value === 'tomorrow') return `${competitionPrefix}明日の試合はありません。`
+  return `${competitionPrefix}今週末の試合はありません。`
 })
 
 const applyTheme = (nextTheme: Theme) => {
@@ -195,7 +226,7 @@ onMounted(() => {
       </div>
     </header>
 
-    <nav class="quick-filters" aria-label="日付フィルター">
+    <nav class="quick-filters quick-filters--date" aria-label="日付フィルター">
       <button
         v-for="filter in dateFilters"
         :key="filter.value"
@@ -206,6 +237,20 @@ onMounted(() => {
         @click="selectedFilter = filter.value"
       >
         {{ filter.label }}
+      </button>
+    </nav>
+
+    <nav class="quick-filters quick-filters--league" aria-label="リーグフィルター">
+      <button
+        v-for="competition in competitionFilters"
+        :key="competition.id"
+        type="button"
+        class="filter-button filter-button--league"
+        :class="{ 'filter-button--active': selectedCompetition === competition.id }"
+        :aria-pressed="selectedCompetition === competition.id"
+        @click="selectedCompetition = competition.id"
+      >
+        {{ competition.name }}
       </button>
     </nav>
 
