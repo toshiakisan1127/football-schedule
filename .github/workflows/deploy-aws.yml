@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'infra/**'
+      - '.github/workflows/deploy-aws.yml'
   workflow_dispatch:
   issue_comment:
     types:
@@ -129,6 +130,7 @@ jobs:
 
           source infra/plan.env
           gh label create "$APPROVAL_LABEL" \
+            --repo "$GITHUB_REPOSITORY" \
             --color D93F0B \
             --description 'Approval required before CDK production deploy' \
             --force
@@ -136,8 +138,9 @@ jobs:
           while read -r old_issue; do
             [ -z "$old_issue" ] && continue
             gh issue close "$old_issue" \
+              --repo "$GITHUB_REPOSITORY" \
               --comment "Superseded by a newer CDK plan for ${DEPLOY_SHA}."
-          done < <(gh issue list --state open --label "$APPROVAL_LABEL" --json number --jq '.[].number')
+          done < <(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label "$APPROVAL_LABEL" --json number --jq '.[].number')
 
           short_sha=${DEPLOY_SHA:0:7}
           diff_preview=$(sed -n '1,700p' infra/cdk-diff.txt)
@@ -168,6 +171,7 @@ jobs:
           EOF
 
           issue_url=$(gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
             --title "CDK deploy approval: ${short_sha}" \
             --body-file "$body_file" \
             --label "$APPROVAL_LABEL")
@@ -204,13 +208,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          labels=$(gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name')
+          labels=$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
           if ! grep -Fxq "$APPROVAL_LABEL" <<< "$labels"; then
             echo 'This is not a CDK deployment approval issue.' >&2
             exit 1
           fi
 
-          body=$(gh issue view "$ISSUE_NUMBER" --json body --jq .body)
+          body=$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
           deploy_sha=$(sed -n 's/<!-- deploy-sha:\([0-9a-f]\{40\}\) -->/\1/p' <<< "$body" | head -n1)
           diff_hash=$(sed -n 's/<!-- diff-sha256:\([0-9a-f]\{64\}\) -->/\1/p' <<< "$body" | head -n1)
           plan_run_id=$(sed -n 's/<!-- plan-run-id:\([0-9][0-9]*\) -->/\1/p' <<< "$body" | head -n1)
@@ -242,6 +246,7 @@ jobs:
           current_main=$(git rev-parse origin/main)
           if [ "$DEPLOY_SHA" != "$current_main" ]; then
             gh issue close "$ISSUE_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
               --comment "Deploy rejected: approved commit \`${DEPLOY_SHA}\` is no longer the current main (\`${current_main}\`). A new plan is required."
             exit 1
           fi
@@ -303,4 +308,5 @@ jobs:
           DEPLOY_SHA: ${{ steps.approval.outputs.deploy_sha }}
         run: |
           gh issue close "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
             --comment "Deployed \`${DEPLOY_SHA}\` successfully to AWS production."
