@@ -7,48 +7,63 @@ from datetime import date
 import handler
 
 
-def _fixture(*, fixture_id: str, home_id: str | None, home_name: str, away_id: str | None, away_name: str) -> dict:
+def _fixture(
+    *,
+    fixture_id: int,
+    home_id: int | None,
+    home_name: str,
+    away_id: int | None,
+    away_name: str,
+) -> dict:
     return {
-        "id": fixture_id,
-        "date": "2026-09-12T15:00:00Z",
-        "status": None,
-        "home": {"id": home_id, "name": home_name},
-        "away": {"id": away_id, "name": away_name},
-        "score": {"home": None, "away": None},
+        "fixture": {
+            "id": fixture_id,
+            "date": "2026-09-12T15:00:00Z",
+            "status": {"long": "Not Started", "short": "NS", "elapsed": None},
+        },
+        "teams": {
+            "home": {"id": home_id, "name": home_name},
+            "away": {"id": away_id, "name": away_name},
+        },
+        "goals": {"home": None, "away": None},
     }
 
 
 def test_missing_team_id_reuses_provider_id_from_same_response() -> None:
     fixtures = [
         _fixture(
-            fixture_id="fx_missing",
+            fixture_id=1,
             home_id=None,
             home_name="Aston Villa FC",
-            away_id="tm_forest",
+            away_id=50,
             away_name="Nottingham Forest FC",
         ),
         _fixture(
-            fixture_id="fx_complete",
-            home_id="tm_villa",
+            fixture_id=2,
+            home_id=66,
             home_name="Aston Villa FC",
-            away_id="tm_other",
+            away_id=77,
             away_name="Other FC",
         ),
     ]
 
     team_ids = handler._collect_team_ids(fixtures)
-    normalized = handler._normalize_fixture(fixtures[0], handler.COMPETITIONS[0], team_ids=team_ids)
+    normalized = handler._normalize_fixture(
+        fixtures[0],
+        handler.COMPETITIONS[0],
+        team_ids=team_ids,
+    )
 
-    assert normalized["home"]["id"] == "tm_villa"
+    assert normalized["home"]["id"] == "66"
     assert normalized["home"]["id"] != "None"
 
 
 def test_missing_team_id_uses_deterministic_fallback() -> None:
     fixture = _fixture(
-        fixture_id="fx_missing",
+        fixture_id=1,
         home_id=None,
         home_name="Unknown FC",
-        away_id="tm_other",
+        away_id=77,
         away_name="Other FC",
     )
 
@@ -60,12 +75,12 @@ def test_missing_team_id_uses_deterministic_fallback() -> None:
     assert first["home"]["id"] != "None"
 
 
-def test_fetch_logs_compact_raw_fixture_diagnostics(monkeypatch, caplog) -> None:
+def test_fetch_logs_compact_raw_v1_fixture_diagnostics(monkeypatch, caplog) -> None:
     raw = _fixture(
-        fixture_id="fx_raw",
+        fixture_id=1234,
         home_id=None,
         home_name="Aston Villa FC",
-        away_id="tm_forest",
+        away_id=50,
         away_name="Nottingham Forest FC",
     )
 
@@ -73,8 +88,9 @@ def test_fetch_logs_compact_raw_fixture_diagnostics(monkeypatch, caplog) -> None
         handler,
         "_get_api_json",
         lambda *args, **kwargs: {
-            "data": [raw],
-            "meta": {"count": 1, "cursor": 0, "nextCursor": None},
+            "response": [raw],
+            "results": 1,
+            "paging": {"current": 1, "total": 1},
         },
     )
 
@@ -87,16 +103,20 @@ def test_fetch_logs_compact_raw_fixture_diagnostics(monkeypatch, caplog) -> None
             to_date=date(2026, 9, 25),
         )
 
-    record = next(record for record in caplog.records if record.message.startswith("Raw KickoffAPI fixtures:"))
+    record = next(
+        record
+        for record in caplog.records
+        if record.message.startswith("Raw KickoffAPI v1 fixtures:")
+    )
     payload = json.loads(record.message.split("items=", 1)[1])
 
     assert payload == [
         {
-            "id": "fx_raw",
+            "id": 1234,
             "date": "2026-09-12T15:00:00Z",
-            "status": None,
+            "status": {"long": "Not Started", "short": "NS", "elapsed": None},
             "home": {"id": None, "name": "Aston Villa FC"},
-            "away": {"id": "tm_forest", "name": "Nottingham Forest FC"},
+            "away": {"id": 50, "name": "Nottingham Forest FC"},
         }
     ]
     assert "secret" not in record.message
