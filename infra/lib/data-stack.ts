@@ -64,7 +64,7 @@ export class DataStack extends Stack {
         mode: 'OFF',
       },
       scheduleExpression: 'rate(6 hours)',
-      state: 'DISABLED',
+      state: 'ENABLED',
       target: {
         arn: fixtureFetcher.functionArn,
         roleArn: schedulerRole.roleArn,
