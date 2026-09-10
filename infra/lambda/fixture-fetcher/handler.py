@@ -51,7 +51,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     parameter_name = _required_env("API_KEY_PARAMETER_NAME")
     object_key = os.getenv("FIXTURE_OBJECT_KEY", "data/fixtures.json")
     lookback_days = _non_negative_int_env("LOOKBACK_DAYS", 1)
-    lookahead_days = _non_negative_int_env("LOOKAHEAD_DAYS", 30)
+    lookahead_days = _non_negative_int_env("LOOKAHEAD_DAYS", 14)
 
     today_jst = datetime.now(JST).date()
     from_date = today_jst - timedelta(days=lookback_days)
@@ -210,7 +210,7 @@ def _get_api_json(
         f"{API_BASE_URL}{path}",
         headers={"x-api-key": api_key},
         params=params,
-        timeout=(3.05, 10),
+        timeout=(3.05, 30),
     )
     response.raise_for_status()
 
