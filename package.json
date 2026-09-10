@@ -9,7 +9,7 @@
     "dev": "nuxt dev",
     "build": "nuxt build",
     "generate": "nuxt generate",
-    "typecheck": "nuxt typecheck",
+    "typecheck": "nuxt prepare && vue-tsc -b --noEmit",
     "infra:synth": "npm --workspace infra run synth"
   },
   "dependencies": {
