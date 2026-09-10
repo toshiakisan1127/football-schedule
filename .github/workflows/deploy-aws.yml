@@ -45,10 +45,13 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          package-manager-cache: false
+          cache: 'npm'
+          cache-dependency-path: |
+            package.json
+            infra/package.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.2.3
@@ -265,10 +268,13 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          package-manager-cache: false
+          cache: 'npm'
+          cache-dependency-path: |
+            package.json
+            infra/package.json
 
       - name: Install CDK CLI dependencies
-        run: npm install
+        run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.2.3
@@ -379,10 +385,13 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          package-manager-cache: false
+          cache: 'npm'
+          cache-dependency-path: |
+            package.json
+            infra/package.json
 
       - name: Install CDK CLI dependencies
-        run: npm install
+        run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.2.3
