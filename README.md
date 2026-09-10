@@ -13,6 +13,12 @@ mainブランチで直近に完了したWorkflowの実行時間です。Workflow
 - **Deploy AWS infrastructure:** ✅ **2m 52s** · [run #12](https://github.com/toshiakisan1127/football-schedule/actions/runs/34523418427) · 2026-09-11 05:00 JST
 <!-- ci-duration-deploy:end -->
 
+### Performance history
+
+直近30回までの成功したmainブランチ実行時間を可視化しています。対象Workflow完了時に自動更新されます。
+
+![CI performance history](https://raw.githubusercontent.com/toshiakisan1127/football-schedule/ci-metrics/ci-performance.svg)
+
 ## コンセプト
 
 > 日本時間で、見たいサッカーの試合時間だけすぐ分かる。

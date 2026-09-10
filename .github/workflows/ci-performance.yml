@@ -1,0 +1,52 @@
+name: CI Performance Chart
+
+on:
+  workflow_run:
+    workflows:
+      - Lambda tests
+      - Deploy AWS infrastructure
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: ci-performance-chart
+  cancel-in-progress: true
+
+jobs:
+  update-chart:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Generate CI performance chart
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/generate-ci-performance.py /tmp/ci-performance.svg
+
+      - name: Update metrics branch
+        run: |
+          set -euo pipefail
+          git fetch origin ci-metrics
+          git worktree add --detach /tmp/ci-metrics origin/ci-metrics
+          cp /tmp/ci-performance.svg /tmp/ci-metrics/ci-performance.svg
+          cd /tmp/ci-metrics
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-performance.svg
+          if git diff --cached --quiet; then
+            echo "CI performance chart is unchanged"
+            exit 0
+          fi
+          git commit -m "chore: update CI performance chart"
+          git push origin HEAD:ci-metrics
