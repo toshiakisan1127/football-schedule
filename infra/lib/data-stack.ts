@@ -40,7 +40,7 @@ export class DataStack extends Stack {
         },
       }),
       description: 'Fetch and normalize football fixtures before publishing them to S3.',
-      timeout: Duration.seconds(120),
+      timeout: Duration.seconds(600),
       environment: {
         DATA_BUCKET_NAME: props.dataBucket.bucketName,
         API_KEY_PARAMETER_NAME: apiKeyParameterName,
