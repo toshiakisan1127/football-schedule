@@ -59,7 +59,7 @@ S3 (data/fixtures.json)
 
 ## Tech Stack
 
-- Nuxt 3 / TypeScript
+- Nuxt 4 / TypeScript
 - AWS CDK / TypeScript
 - Amazon S3
 - Amazon CloudFront
