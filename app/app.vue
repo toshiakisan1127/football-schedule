@@ -9,8 +9,12 @@ const baseURL = runtimeConfig.app.baseURL.endsWith('/')
   ? runtimeConfig.app.baseURL
   : `${runtimeConfig.app.baseURL}/`
 
-const { data, status, error } = await useFetch<FixtureDocument>(`${baseURL}data/fixtures.json`, {
+const mockDataVersion = '20260911-003'
+const fixturesUrl = `${baseURL}data/fixtures.json?v=${mockDataVersion}`
+
+const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
   server: false,
+  cache: 'no-store',
 })
 
 const selectedFilter = ref<DateFilter>('today')
