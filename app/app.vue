@@ -9,7 +9,7 @@ const baseURL = runtimeConfig.app.baseURL.endsWith('/')
   ? runtimeConfig.app.baseURL
   : `${runtimeConfig.app.baseURL}/`
 
-const mockDataVersion = '20260911-003'
+const mockDataVersion = '20260911-005'
 const fixturesUrl = `${baseURL}data/fixtures.json?v=${mockDataVersion}`
 
 const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
@@ -21,6 +21,7 @@ const selectedFilter = ref<DateFilter>('all')
 const selectedCompetition = ref('all')
 const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
+const showResults = ref(false)
 
 const dateFilters: { value: DateFilter; label: string }[] = [
   { value: 'all', label: '全日程' },
@@ -115,9 +116,15 @@ const timeLabel = (iso: string) =>
   }).format(new Date(iso))
 
 const statusLabel = (fixture: Fixture) => {
+  if (fixture.status === 'live') return '試合中'
   if (fixture.status === 'postponed') return '延期'
   if (fixture.status === 'cancelled') return '中止'
   return null
+}
+
+const resultLabel = (fixture: Fixture) => {
+  if (!showResults.value || fixture.status !== 'finished' || !fixture.score) return null
+  return `${fixture.score.home}–${fixture.score.away}`
 }
 
 const filteredFixtures = computed(() => {
@@ -188,6 +195,11 @@ const toggleTheme = () => {
   localStorage.setItem('football-schedule-theme', nextTheme)
 }
 
+const toggleResults = () => {
+  showResults.value = !showResults.value
+  localStorage.setItem('football-schedule-show-results', String(showResults.value))
+}
+
 onMounted(() => {
   currentDate.value = new Date()
 
@@ -199,6 +211,7 @@ onMounted(() => {
       : 'light'
 
   applyTheme(initialTheme)
+  showResults.value = localStorage.getItem('football-schedule-show-results') === 'true'
 })
 </script>
 
@@ -212,14 +225,24 @@ onMounted(() => {
       </div>
 
       <div class="header-meta">
-        <button
-          type="button"
-          class="theme-toggle"
-          :aria-label="theme === 'dark' ? 'ライトモードに切り替える' : 'ダークモードに切り替える'"
-          @click="toggleTheme"
-        >
-          {{ theme === 'dark' ? '☀︎ ライト' : '☾ ダーク' }}
-        </button>
+        <div class="header-actions">
+          <button
+            type="button"
+            class="result-toggle"
+            :aria-pressed="showResults"
+            @click="toggleResults"
+          >
+            {{ showResults ? '結果を隠す' : '結果を表示' }}
+          </button>
+          <button
+            type="button"
+            class="theme-toggle"
+            :aria-label="theme === 'dark' ? 'ライトモードに切り替える' : 'ダークモードに切り替える'"
+            @click="toggleTheme"
+          >
+            {{ theme === 'dark' ? '☀︎ ライト' : '☾ ダーク' }}
+          </button>
+        </div>
         <p v-if="generatedAtLabel" class="updated-at">
           更新 {{ generatedAtLabel }}
         </p>
@@ -280,9 +303,18 @@ onMounted(() => {
               </p>
             </div>
 
-            <span v-if="statusLabel(fixture)" class="fixture-status">
-              {{ statusLabel(fixture) }}
-            </span>
+            <div class="fixture-side">
+              <span v-if="resultLabel(fixture)" class="fixture-result">
+                {{ resultLabel(fixture) }}
+              </span>
+              <span
+                v-else-if="statusLabel(fixture)"
+                class="fixture-status"
+                :class="{ 'fixture-status--live': fixture.status === 'live' }"
+              >
+                {{ statusLabel(fixture) }}
+              </span>
+            </div>
           </div>
         </div>
       </article>
