@@ -15,11 +15,11 @@ export class DataStack extends Stack {
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props)
 
-    const apiKeyParameterName = '/football-schedule/api-football-key'
+    const apiKeyParameterName = '/football-schedule/kickoff-api-key'
 
     const apiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(
       this,
-      'ApiFootballKeyParameter',
+      'KickoffApiKeyParameter',
       {
         parameterName: apiKeyParameterName,
         version: 1,

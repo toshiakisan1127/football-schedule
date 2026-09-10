@@ -10,47 +10,62 @@ import handler
 
 def raw_fixture(
     *,
-    fixture_id: int = 1001,
-    kickoff: str = "2026-09-12T15:00:00+09:00",
+    fixture_id: str = "fx_1001",
+    kickoff: str = "2026-09-12T06:00:00.000Z",
     status: str = "NS",
     home_goals: int | None = None,
     away_goals: int | None = None,
 ) -> dict:
     return {
-        "fixture": {
-            "id": fixture_id,
-            "date": kickoff,
-            "status": {"short": status},
+        "id": fixture_id,
+        "date": kickoff,
+        "status": {
+            "long": "Not Started" if status == "NS" else "Match Finished",
+            "short": status,
+            "elapsed": None,
         },
-        "teams": {
-            "home": {"id": 10, "name": "Home FC"},
-            "away": {"id": 20, "name": "Away FC"},
+        "league": {
+            "id": "provider-league",
+            "name": "Provider League",
+            "season": 2026,
         },
-        "goals": {
+        "home": {"id": "tm_home", "name": "Home FC"},
+        "away": {"id": "tm_away", "name": "Away FC"},
+        "score": {
             "home": home_goals,
             "away": away_goals,
+            "halftime": {"home": None, "away": None},
         },
     }
 
 
 def competition(app_id: str = "epl") -> handler.Competition:
-    if app_id == "epl":
-        return handler.Competition("epl", 39, "Premier League", "England")
-    return handler.Competition("j1", 98, "J1 League", "Japan")
+    items = {item.app_id: item for item in handler.COMPETITIONS}
+    return items[app_id]
 
 
-def test_mvp_has_only_premier_league_and_j1() -> None:
-    assert [item.app_id for item in handler.COMPETITIONS] == ["epl", "j1"]
+def test_mvp_has_only_premier_league_ucl_and_laliga() -> None:
+    assert [item.app_id for item in handler.COMPETITIONS] == ["epl", "ucl", "laliga"]
+    assert [item.api_league_id for item in handler.COMPETITIONS] == [
+        "en.1",
+        "lg_4WmajCeHmdkK",
+        "es.1",
+    ]
 
 
 @pytest.mark.parametrize(
     ("api_status", "expected"),
     [
         ("NS", "scheduled"),
+        ("scheduled", "scheduled"),
         ("1H", "live"),
+        ("live", "live"),
         ("FT", "finished"),
+        ("finished", "finished"),
         ("PST", "postponed"),
+        ("postponed", "postponed"),
         ("CANC", "cancelled"),
+        ("cancelled", "cancelled"),
     ],
 )
 def test_normalize_status(api_status: str, expected: str) -> None:
@@ -58,46 +73,76 @@ def test_normalize_status(api_status: str, expected: str) -> None:
 
 
 def test_unknown_status_fails_closed() -> None:
-    with pytest.raises(handler.FixtureDataError, match="Unknown API-Football fixture status"):
+    with pytest.raises(handler.FixtureDataError, match="Unknown KickoffAPI fixture status"):
         handler._normalize_status("SOMETHING_NEW")
 
 
-def test_normalize_fixture_converts_kickoff_to_utc() -> None:
+def test_normalize_fixture_uses_kickoffapi_production_shape() -> None:
     normalized = handler._normalize_fixture(raw_fixture(), competition())
 
     assert normalized == {
-        "id": "1001",
+        "id": "fx_1001",
         "competition": {
             "id": "epl",
             "name": "Premier League",
             "country": "England",
         },
-        "home": {"id": "10", "name": "Home FC"},
-        "away": {"id": "20", "name": "Away FC"},
+        "home": {"id": "tm_home", "name": "Home FC"},
+        "away": {"id": "tm_away", "name": "Away FC"},
         "kickoff": "2026-09-12T06:00:00Z",
         "status": "scheduled",
         "score": None,
     }
 
 
+def test_normalize_fixture_also_accepts_documented_v2_shape() -> None:
+    normalized = handler._normalize_fixture(
+        {
+            "id": "fx_documented",
+            "date": "2026-09-12T15:00:00+09:00",
+            "status": "finished",
+            "homeTeam": {"id": "tm_home", "name": "Home FC"},
+            "awayTeam": {"id": "tm_away", "name": "Away FC"},
+            "homeScore": 2,
+            "awayScore": 1,
+        },
+        competition("laliga"),
+    )
+
+    assert normalized["kickoff"] == "2026-09-12T06:00:00Z"
+    assert normalized["status"] == "finished"
+    assert normalized["score"] == {"home": 2, "away": 1}
+
+
 def test_live_score_is_preserved_in_json_data() -> None:
     normalized = handler._normalize_fixture(
         raw_fixture(status="2H", home_goals=2, away_goals=1),
-        competition("j1"),
+        competition("ucl"),
     )
 
     assert normalized["status"] == "live"
     assert normalized["score"] == {"home": 2, "away": 1}
 
 
-def test_finished_score_is_preserved() -> None:
-    normalized = handler._normalize_fixture(
-        raw_fixture(status="FT", home_goals=3, away_goals=2),
-        competition(),
+@pytest.mark.parametrize(
+    ("kickoff", "expected"),
+    [
+        ("2026-09-09T14:59:59Z", False),
+        ("2026-09-09T15:00:00Z", True),
+        ("2026-10-11T14:59:59Z", True),
+        ("2026-10-11T15:00:00Z", False),
+    ],
+)
+def test_fixture_window_is_evaluated_in_jst(kickoff: str, expected: bool) -> None:
+    fixture = {"kickoff": kickoff}
+    assert (
+        handler._fixture_in_window(
+            fixture,
+            from_date=date(2026, 9, 10),
+            to_date=date(2026, 10, 11),
+        )
+        is expected
     )
-
-    assert normalized["status"] == "finished"
-    assert normalized["score"] == {"home": 3, "away": 2}
 
 
 @pytest.mark.parametrize(
@@ -113,16 +158,21 @@ def test_season_uses_start_year(reference_date: date, expected_season: int) -> N
     assert handler._season_for(reference_date) == expected_season
 
 
-def test_fetch_competition_fixtures_follows_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_competition_fixtures_follows_cursor_pagination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[dict] = []
 
     def fake_get_api_json(path: str, *, api_key: str, params: dict) -> dict:
         calls.append({"path": path, "api_key": api_key, "params": params.copy()})
-        page = params["page"]
+        if "cursor" not in params:
+            return {
+                "data": [raw_fixture(fixture_id="fx_1")],
+                "meta": {"count": 1, "cursor": 0, "nextCursor": "200"},
+            }
         return {
-            "errors": [],
-            "paging": {"current": page, "total": 2},
-            "response": [raw_fixture(fixture_id=1000 + page)],
+            "data": [raw_fixture(fixture_id="fx_2")],
+            "meta": {"count": 1, "cursor": 200, "nextCursor": None},
         }
 
     monkeypatch.setattr(handler, "_get_api_json", fake_get_api_json)
@@ -130,70 +180,126 @@ def test_fetch_competition_fixtures_follows_pagination(monkeypatch: pytest.Monke
     fixtures = handler._fetch_competition_fixtures(
         api_key="secret",
         competition=competition(),
+        season=2026,
         from_date=date(2026, 9, 10),
         to_date=date(2026, 10, 11),
     )
 
-    assert [item["fixture"]["id"] for item in fixtures] == [1001, 1002]
-    assert [call["params"]["page"] for call in calls] == [1, 2]
-    assert all(call["params"]["league"] == 39 for call in calls)
-    assert all(call["params"]["season"] == 2026 for call in calls)
-    assert all(call["params"]["timezone"] == "Asia/Tokyo" for call in calls)
+    assert [item["id"] for item in fixtures] == ["fx_1", "fx_2"]
+    assert [call["path"] for call in calls] == [
+        "/api/v2/fixtures",
+        "/api/v2/fixtures",
+    ]
+    assert calls[0]["params"] == {
+        "league": "en.1",
+        "season": 2026,
+        "from": "2026-09-10",
+        "to": "2026-10-11",
+    }
+    assert calls[1]["params"]["cursor"] == "200"
 
 
-def test_api_errors_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_competition_fixtures_supports_documented_page_pagination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict] = []
+
+    def fake_get_api_json(path: str, *, api_key: str, params: dict) -> dict:
+        calls.append(params.copy())
+        page = params.get("page", 1)
+        return {
+            "data": [raw_fixture(fixture_id=f"fx_{page}")],
+            "page": page,
+            "totalPages": 2,
+        }
+
+    monkeypatch.setattr(handler, "_get_api_json", fake_get_api_json)
+
+    fixtures = handler._fetch_competition_fixtures(
+        api_key="secret",
+        competition=competition("laliga"),
+        season=2026,
+        from_date=date(2026, 9, 10),
+        to_date=date(2026, 10, 11),
+    )
+
+    assert [item["id"] for item in fixtures] == ["fx_1", "fx_2"]
+    assert calls[1]["page"] == 2
+
+
+def test_api_uses_kickoff_header_and_rejects_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+
     class FakeResponse:
         def raise_for_status(self) -> None:
             pass
 
         def json(self) -> dict:
-            return {"errors": {"rateLimit": "Too many requests"}, "response": []}
+            return {"error": "rate limit"}
 
-    monkeypatch.setattr(handler._http, "get", lambda *args, **kwargs: FakeResponse())
+    def fake_get(*args, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
 
-    with pytest.raises(handler.FixtureDataError, match="API-Football returned errors"):
-        handler._get_api_json("/fixtures", api_key="secret", params={})
+    monkeypatch.setattr(handler._http, "get", fake_get)
+
+    with pytest.raises(handler.FixtureDataError, match="KickoffAPI returned errors"):
+        handler._get_api_json("/api/v2/fixtures", api_key="secret", params={})
+
+    assert captured["headers"] == {"x-api-key": "secret"}
 
 
 def test_lambda_does_not_publish_when_one_competition_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("DATA_BUCKET_NAME", "fixture-bucket")
-    monkeypatch.setenv("API_KEY_PARAMETER_NAME", "/football-schedule/api-football-key")
+    monkeypatch.setenv(
+        "API_KEY_PARAMETER_NAME",
+        "/football-schedule/kickoff-api-key",
+    )
     monkeypatch.setattr(handler, "_load_api_key", lambda _: "secret")
 
     def fake_fetch(*, competition: handler.Competition, **kwargs) -> list[dict]:
-        if competition.app_id == "epl":
-            return [raw_fixture()]
-        raise handler.FixtureDataError("J1 fetch failed")
+        if competition.app_id == "ucl":
+            raise handler.FixtureDataError("UCL fetch failed")
+        return [raw_fixture()]
 
     published: list[dict] = []
     monkeypatch.setattr(handler, "_fetch_competition_fixtures", fake_fetch)
     monkeypatch.setattr(handler, "_publish_document", lambda **kwargs: published.append(kwargs))
 
-    with pytest.raises(handler.FixtureDataError, match="J1 fetch failed"):
+    with pytest.raises(handler.FixtureDataError, match="UCL fetch failed"):
         handler.lambda_handler({}, None)
 
     assert published == []
 
 
-def test_lambda_publishes_once_after_both_competitions_succeed(
+def test_lambda_publishes_once_after_all_competitions_succeed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("DATA_BUCKET_NAME", "fixture-bucket")
-    monkeypatch.setenv("API_KEY_PARAMETER_NAME", "/football-schedule/api-football-key")
+    monkeypatch.setenv(
+        "API_KEY_PARAMETER_NAME",
+        "/football-schedule/kickoff-api-key",
+    )
     monkeypatch.setattr(handler, "_load_api_key", lambda _: "secret")
 
+    fixture_ids = {
+        "epl": "fx_epl",
+        "ucl": "fx_ucl",
+        "laliga": "fx_laliga",
+    }
+
     def fake_fetch(*, competition: handler.Competition, **kwargs) -> list[dict]:
-        status = "FT" if competition.app_id == "epl" else "1H"
-        score = (2, 1) if competition.app_id == "epl" else (0, 0)
-        fixture_id = 2001 if competition.app_id == "epl" else 2002
         return [
             raw_fixture(
-                fixture_id=fixture_id,
-                status=status,
-                home_goals=score[0],
-                away_goals=score[1],
+                fixture_id=fixture_ids[competition.app_id],
+                kickoff="2026-09-12T06:00:00Z",
+                status="FT",
+                home_goals=2,
+                away_goals=1,
             )
         ]
 
@@ -205,10 +311,14 @@ def test_lambda_publishes_once_after_both_competitions_succeed(
 
     assert result["ok"] is True
     assert result["published"] is True
-    assert result["fixtureCount"] == 2
+    assert result["fixtureCount"] == 3
     assert len(published) == 1
 
     body = json.loads(published[0]["body"].decode("utf-8"))
-    assert {fixture["competition"]["id"] for fixture in body["fixtures"]} == {"epl", "j1"}
-    assert body["fixtures"][0]["score"] is not None
+    assert {fixture["competition"]["id"] for fixture in body["fixtures"]} == {
+        "epl",
+        "ucl",
+        "laliga",
+    }
+    assert all(fixture["score"] is not None for fixture in body["fixtures"])
     assert body["range"]["from"] <= body["range"]["to"]

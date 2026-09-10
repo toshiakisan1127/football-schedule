@@ -14,27 +14,28 @@ import requests
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
-API_BASE_URL = "https://v3.football.api-sports.io"
+API_BASE_URL = "https://api.kickoffapi.com"
 JST = ZoneInfo("Asia/Tokyo")
 
-SCHEDULED_STATUSES = {"TBD", "NS"}
-LIVE_STATUSES = {"1H", "HT", "2H", "ET", "BT", "P", "LIVE"}
-FINISHED_STATUSES = {"FT", "AET", "PEN", "AWD", "WO"}
-POSTPONED_STATUSES = {"PST", "SUSP", "INT"}
-CANCELLED_STATUSES = {"CANC", "ABD"}
+SCHEDULED_STATUSES = {"tbd", "ns", "scheduled", "not started"}
+LIVE_STATUSES = {"1h", "ht", "2h", "et", "bt", "p", "live"}
+FINISHED_STATUSES = {"ft", "aet", "pen", "awd", "wo", "finished"}
+POSTPONED_STATUSES = {"pst", "susp", "int", "postponed"}
+CANCELLED_STATUSES = {"canc", "abd", "cancelled", "canceled"}
 
 
 @dataclass(frozen=True)
 class Competition:
     app_id: str
-    api_league_id: int
+    api_league_id: str
     name: str
     country: str
 
 
 COMPETITIONS = (
-    Competition("epl", 39, "Premier League", "England"),
-    Competition("j1", 98, "J1 League", "Japan"),
+    Competition("epl", "en.1", "Premier League", "England"),
+    Competition("ucl", "lg_4WmajCeHmdkK", "UEFA Champions League", "Europe"),
+    Competition("laliga", "es.1", "LaLiga", "Spain"),
 )
 
 _http = requests.Session()
@@ -55,11 +56,13 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     today_jst = datetime.now(JST).date()
     from_date = today_jst - timedelta(days=lookback_days)
     to_date = today_jst + timedelta(days=lookahead_days)
+    season = _season_for(today_jst)
 
     LOGGER.info(
-        "Starting fixture refresh: from=%s to=%s competitions=%d",
+        "Starting fixture refresh: from=%s to=%s season=%d competitions=%d",
         from_date,
         to_date,
+        season,
         len(COMPETITIONS),
     )
 
@@ -67,22 +70,32 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     fixtures: list[dict[str, Any]] = []
 
     # Build the entire document first. S3 is only updated after every competition
-    # has been fetched and normalized successfully.
+    # has been fetched, normalized and filtered successfully.
     for competition in COMPETITIONS:
         raw_fixtures = _fetch_competition_fixtures(
             api_key=api_key,
             competition=competition,
+            season=season,
             from_date=from_date,
             to_date=to_date,
         )
-        normalized = [_normalize_fixture(item, competition) for item in raw_fixtures]
+        normalized = [
+            fixture
+            for item in raw_fixtures
+            if _fixture_in_window(
+                fixture := _normalize_fixture(item, competition),
+                from_date=from_date,
+                to_date=to_date,
+            )
+        ]
         fixtures.extend(normalized)
 
         LOGGER.info(
-            "Fetched competition: app_id=%s api_league_id=%d season=%d fixtures=%d",
+            "Fetched competition: app_id=%s api_league_id=%s season=%d raw=%d kept=%d",
             competition.app_id,
             competition.api_league_id,
-            _season_for(today_jst),
+            season,
+            len(raw_fixtures),
             len(normalized),
         )
 
@@ -122,48 +135,69 @@ def _fetch_competition_fixtures(
     *,
     api_key: str,
     competition: Competition,
+    season: int,
     from_date: date,
     to_date: date,
 ) -> list[dict[str, Any]]:
-    season = _season_for(from_date)
-    page = 1
     fixtures: list[dict[str, Any]] = []
+    cursor: str | None = None
+    page = 1
+    seen_cursors: set[str] = set()
 
     while True:
+        params: dict[str, Any] = {
+            "league": competition.api_league_id,
+            "season": season,
+            "from": from_date.isoformat(),
+            "to": to_date.isoformat(),
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+        elif page > 1:
+            params["page"] = page
+
         payload = _get_api_json(
-            "/fixtures",
+            "/api/v2/fixtures",
             api_key=api_key,
-            params={
-                "league": competition.api_league_id,
-                "season": season,
-                "from": from_date.isoformat(),
-                "to": to_date.isoformat(),
-                "timezone": "Asia/Tokyo",
-                "page": page,
-            },
+            params=params,
         )
 
-        response_items = payload.get("response")
+        response_items = payload.get("data")
         if not isinstance(response_items, list):
             raise FixtureDataError(
-                f"API response is missing a response list for {competition.app_id}"
+                f"KickoffAPI response is missing a data list for {competition.app_id}"
             )
         fixtures.extend(response_items)
 
-        paging = payload.get("paging") or {}
+        meta = payload.get("meta")
+        if isinstance(meta, dict):
+            next_cursor = meta.get("nextCursor")
+            if next_cursor not in (None, ""):
+                next_cursor_value = str(next_cursor)
+                if next_cursor_value in seen_cursors:
+                    raise FixtureDataError(
+                        f"KickoffAPI repeated cursor for {competition.app_id}: "
+                        f"{next_cursor_value!r}"
+                    )
+                seen_cursors.add(next_cursor_value)
+                cursor = next_cursor_value
+                continue
+            return fixtures
+
+        # KickoffAPI's migration documentation describes page/totalPages at the
+        # top level, while current production responses use meta.nextCursor.
+        # Supporting both keeps the fetcher tolerant of either v2 envelope.
         try:
-            current_page = int(paging.get("current", page))
-            total_pages = int(paging.get("total", 1))
+            current_page = int(payload.get("page", page))
+            total_pages = int(payload.get("totalPages", current_page))
         except (TypeError, ValueError) as exc:
             raise FixtureDataError(
-                f"Invalid paging data for {competition.app_id}: {paging!r}"
+                f"Invalid KickoffAPI paging data for {competition.app_id}"
             ) from exc
 
         if current_page >= total_pages:
-            break
+            return fixtures
         page = current_page + 1
-
-    return fixtures
 
 
 def _get_api_json(
@@ -174,7 +208,7 @@ def _get_api_json(
 ) -> dict[str, Any]:
     response = _http.get(
         f"{API_BASE_URL}{path}",
-        headers={"x-apisports-key": api_key},
+        headers={"x-api-key": api_key},
         params=params,
         timeout=(3.05, 10),
     )
@@ -183,14 +217,14 @@ def _get_api_json(
     try:
         payload = response.json()
     except requests.JSONDecodeError as exc:
-        raise FixtureDataError("API-Football returned invalid JSON") from exc
+        raise FixtureDataError("KickoffAPI returned invalid JSON") from exc
 
     if not isinstance(payload, dict):
-        raise FixtureDataError("API-Football returned a non-object JSON payload")
+        raise FixtureDataError("KickoffAPI returned a non-object JSON payload")
 
-    errors = payload.get("errors")
+    errors = payload.get("errors") or payload.get("error")
     if errors:
-        raise FixtureDataError(f"API-Football returned errors: {errors!r}")
+        raise FixtureDataError(f"KickoffAPI returned errors: {errors!r}")
 
     return payload
 
@@ -200,18 +234,24 @@ def _normalize_fixture(
     competition: Competition,
 ) -> dict[str, Any]:
     try:
-        fixture = raw["fixture"]
-        teams = raw["teams"]
-        home = teams["home"]
-        away = teams["away"]
+        fixture_id = raw["id"]
+        kickoff = raw["date"]
 
-        fixture_id = fixture["id"]
-        kickoff = fixture["date"]
-        status_short = fixture["status"]["short"]
+        home = raw.get("home") or raw.get("homeTeam")
+        away = raw.get("away") or raw.get("awayTeam")
+        if not isinstance(home, dict) or not isinstance(away, dict):
+            raise KeyError("home/away teams")
+
         home_id = home["id"]
         home_name = home["name"]
         away_id = away["id"]
         away_name = away["name"]
+
+        raw_status = raw["status"]
+        if isinstance(raw_status, dict):
+            status_value = raw_status.get("short") or raw_status.get("long")
+        else:
+            status_value = raw_status
     except (KeyError, TypeError) as exc:
         raise FixtureDataError(
             f"Malformed fixture payload for {competition.app_id}: {raw!r}"
@@ -219,14 +259,18 @@ def _normalize_fixture(
 
     if not isinstance(kickoff, str):
         raise FixtureDataError(f"Invalid kickoff for fixture {fixture_id}: {kickoff!r}")
-    if not isinstance(status_short, str):
+    if not isinstance(status_value, str):
         raise FixtureDataError(
-            f"Invalid status for fixture {fixture_id}: {status_short!r}"
+            f"Invalid status for fixture {fixture_id}: {status_value!r}"
         )
 
-    goals = raw.get("goals") or {}
-    home_goals = goals.get("home") if isinstance(goals, dict) else None
-    away_goals = goals.get("away") if isinstance(goals, dict) else None
+    score_raw = raw.get("score")
+    if isinstance(score_raw, dict):
+        home_goals = score_raw.get("home")
+        away_goals = score_raw.get("away")
+    else:
+        home_goals = raw.get("homeScore")
+        away_goals = raw.get("awayScore")
 
     score = None
     if isinstance(home_goals, int) and isinstance(away_goals, int):
@@ -248,27 +292,42 @@ def _normalize_fixture(
             "name": str(away_name),
         },
         "kickoff": _utc_iso(kickoff),
-        "status": _normalize_status(status_short),
+        "status": _normalize_status(status_value),
         # Keep live scores in JSON; the frontend decides when they are safe to show.
         "score": score,
     }
 
 
-def _normalize_status(status_short: str) -> str:
-    if status_short in SCHEDULED_STATUSES:
+def _normalize_status(status_value: str) -> str:
+    normalized = status_value.strip().lower()
+    if normalized in SCHEDULED_STATUSES:
         return "scheduled"
-    if status_short in LIVE_STATUSES:
+    if normalized in LIVE_STATUSES:
         return "live"
-    if status_short in FINISHED_STATUSES:
+    if normalized in FINISHED_STATUSES:
         return "finished"
-    if status_short in POSTPONED_STATUSES:
+    if normalized in POSTPONED_STATUSES:
         return "postponed"
-    if status_short in CANCELLED_STATUSES:
+    if normalized in CANCELLED_STATUSES:
         return "cancelled"
-    raise FixtureDataError(f"Unknown API-Football fixture status: {status_short}")
+    raise FixtureDataError(f"Unknown KickoffAPI fixture status: {status_value}")
 
 
-def _utc_iso(value: str) -> str:
+def _fixture_in_window(
+    fixture: dict[str, Any],
+    *,
+    from_date: date,
+    to_date: date,
+) -> bool:
+    kickoff = fixture.get("kickoff")
+    if not isinstance(kickoff, str):
+        raise FixtureDataError(f"Normalized fixture has invalid kickoff: {kickoff!r}")
+
+    fixture_date_jst = _parse_datetime(kickoff).astimezone(JST).date()
+    return from_date <= fixture_date_jst <= to_date
+
+
+def _parse_datetime(value: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
@@ -277,8 +336,13 @@ def _utc_iso(value: str) -> str:
     if parsed.tzinfo is None:
         raise FixtureDataError(f"Fixture datetime has no timezone: {value!r}")
 
+    return parsed
+
+
+def _utc_iso(value: str) -> str:
     return (
-        parsed.astimezone(timezone.utc)
+        _parse_datetime(value)
+        .astimezone(timezone.utc)
         .isoformat(timespec="seconds")
         .replace("+00:00", "Z")
     )

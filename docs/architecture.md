@@ -8,17 +8,20 @@
 
 ### In scope (MVP)
 
-- J1 と欧州主要5リーグ
-- UEFA Champions League / Europa League
+- Premier League
+- LaLiga
+- UEFA Champions League
 - 直近の日程表示
 - 大会フィルター
 - お気に入りクラブ
-- 延期・中止表示
+- live / finished / postponed / cancelled の状態管理
+- 試合結果の表示・非表示切り替え
 - 最終更新時刻表示
+
+J1はKickoffAPIで2026/27シーズンの取得を確認できていないため、一旦MVP対象外とする。
 
 ### Out of scope (MVP)
 
-- 試合結果・ライブスコア
 - 順位表
 - ニュース
 - 選手情報
@@ -34,11 +37,11 @@ EventBridge Scheduler
         v
 Fixture Fetcher Lambda
         |
-        +--> Football data provider
+        +--> KickoffAPI v2
         |
         +--> validate all responses
         |
-        +--> normalize
+        +--> normalize / JST window filter
         |
         v
 S3 data/fixtures.json
@@ -55,7 +58,7 @@ Nuxt client
 外部APIのレスポンスを直接フロントへ返さず、Lambdaで以下の形へ正規化する。
 
 ```ts
-export type FixtureStatus = 'scheduled' | 'postponed' | 'cancelled'
+export type FixtureStatus = 'scheduled' | 'live' | 'finished' | 'postponed' | 'cancelled'
 
 export interface Fixture {
   id: string
@@ -74,6 +77,10 @@ export interface Fixture {
   }
   kickoff: string
   status: FixtureStatus
+  score: {
+    home: number
+    away: number
+  } | null
 }
 
 export interface FixtureDocument {
@@ -86,7 +93,9 @@ export interface FixtureDocument {
 }
 ```
 
-`kickoff` と `generatedAt` はUTCのISO 8601で保存し、画面表示時に利用者のタイムゾーンへ変換する。
+`kickoff` と `generatedAt` はUTCのISO 8601で保存する。Lambdaの取得window判定はJSTで行い、画面表示時は利用者のローカルタイムへ変換する。
+
+アプリ側のcompetition id（`epl` / `ucl` / `laliga`）は外部provider IDから独立させる。
 
 ## S3 layout
 
@@ -101,8 +110,10 @@ data/
 
 ## Refresh strategy
 
-- EventBridge Scheduler から数時間おきにLambdaを実行する
-- 直近7日程度の過去分と、今後30日程度を取得対象とする
+- EventBridge Schedulerから6時間おきにLambdaを実行する想定
+- 現時点ではSchedulerは `DISABLED` のままにし、手動検証後に有効化する
+- 前日から今後30日程度を公開対象とする
+- KickoffAPIにも `from` / `to` を渡すが、providerが範囲外を返す場合に備えてLambda側でもJSTでfilterする
 - 全対象大会の取得・検証が成功した場合のみS3を更新する
 - 失敗時は既存の正常な `fixtures.json` を保持する
 - CloudFrontではJSONのキャッシュTTLを短めに設定する
@@ -115,13 +126,15 @@ data/
 localStorage
   favoriteCompetitionIds
   favoriteTeamIds
+  showResults
 ```
 
 ## AWS stacks
 
 ### HostingStack
 
-- S3 bucket for static Nuxt output and generated fixture JSON
+- Static Nuxt output用S3 bucket
+- Fixture JSON用S3 bucket
 - CloudFront distribution
 - Origin Access Control
 
@@ -129,8 +142,8 @@ localStorage
 
 - Fixture Fetcher Lambda
 - EventBridge Scheduler
-- API credential storage
-- S3 write permission
+- KickoffAPI credentialのSSM参照
+- fixture data bucketへの書き込み権限
 
 ## Failure handling
 
@@ -141,6 +154,7 @@ localStorage
 
 ## Security
 
+- KickoffAPI keyはSSM SecureString `/football-schedule/kickoff-api-key` で管理する
 - 外部APIキーはフロントへ渡さない
 - S3への書き込み権限はFixture Fetcher Lambdaだけに限定する
 - CloudFrontからの読み取りのみ許可する
@@ -148,7 +162,8 @@ localStorage
 
 ## Future ideas
 
-- J2 / J3 / カップ戦 / 代表戦
+- J1 / J2 / J3 / カップ戦 / 代表戦
+- 欧州他リーグ / Europa League
 - お気に入りだけのホーム画面
 - カレンダー追加（ICS）
 - PWA
