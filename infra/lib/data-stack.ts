@@ -1,4 +1,4 @@
-import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib'
+import { CfnOutput, Duration, Stack, type StackProps } from 'aws-cdk-lib'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as scheduler from 'aws-cdk-lib/aws-scheduler'
@@ -31,7 +31,7 @@ export class DataStack extends Stack {
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(process.cwd(), 'lambda', 'fixture-fetcher')),
       description: 'Fetch and normalize football fixtures before publishing them to S3.',
-      timeout: undefined,
+      timeout: Duration.seconds(30),
       environment: {
         DATA_BUCKET_NAME: props.dataBucket.bucketName,
         API_KEY_PARAMETER_NAME: apiKeyParameterName,
