@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { Fixture, FixtureDocument } from './types/fixture'
 
+type DateFilter = 'today' | 'tomorrow' | 'weekend'
+type Theme = 'light' | 'dark'
+
 const runtimeConfig = useRuntimeConfig()
 const baseURL = runtimeConfig.app.baseURL.endsWith('/')
   ? runtimeConfig.app.baseURL
@@ -10,18 +13,64 @@ const { data, status, error } = await useFetch<FixtureDocument>(`${baseURL}data/
   server: false,
 })
 
-const localDateKey = (iso: string) => {
+const selectedFilter = ref<DateFilter>('today')
+const currentDate = ref<Date | null>(null)
+const theme = ref<Theme>('dark')
+
+const dateFilters: { value: DateFilter; label: string }[] = [
+  { value: 'today', label: '今日' },
+  { value: 'tomorrow', label: '明日' },
+  { value: 'weekend', label: '今週末' },
+]
+
+const localDateKeyFromDate = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-CA', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(new Date(iso))
+  }).formatToParts(date)
 
   const get = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? ''
 
   return `${get('year')}-${get('month')}-${get('day')}`
 }
+
+const localDateKey = (iso: string) => localDateKeyFromDate(new Date(iso))
+
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+const targetDateKeys = computed(() => {
+  if (!currentDate.value) return null
+
+  const today = new Date(
+    currentDate.value.getFullYear(),
+    currentDate.value.getMonth(),
+    currentDate.value.getDate(),
+  )
+
+  if (selectedFilter.value === 'today') {
+    return new Set([localDateKeyFromDate(today)])
+  }
+
+  if (selectedFilter.value === 'tomorrow') {
+    return new Set([localDateKeyFromDate(addDays(today, 1))])
+  }
+
+  const dayOfWeek = today.getDay()
+  const saturdayOffset = dayOfWeek === 0 ? -1 : 6 - dayOfWeek
+  const saturday = addDays(today, saturdayOffset)
+  const sunday = addDays(saturday, 1)
+
+  return new Set([
+    localDateKeyFromDate(saturday),
+    localDateKeyFromDate(sunday),
+  ])
+})
 
 const dateLabel = (iso: string) =>
   new Intl.DateTimeFormat('ja-JP', {
@@ -43,8 +92,15 @@ const statusLabel = (fixture: Fixture) => {
   return null
 }
 
+const filteredFixtures = computed(() => {
+  const fixtures = data.value?.fixtures ?? []
+  if (!targetDateKeys.value) return fixtures
+
+  return fixtures.filter((fixture) => targetDateKeys.value?.has(localDateKey(fixture.kickoff)))
+})
+
 const groupedFixtures = computed(() => {
-  const fixtures = [...(data.value?.fixtures ?? [])].sort(
+  const fixtures = [...filteredFixtures.value].sort(
     (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime(),
   )
 
@@ -70,33 +126,80 @@ const generatedAtLabel = computed(() => {
   if (!data.value?.generatedAt) return null
 
   return new Intl.DateTimeFormat('ja-JP', {
-    year: 'numeric',
     month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(data.value.generatedAt))
 })
+
+const emptyMessage = computed(() => {
+  if (selectedFilter.value === 'today') return '今日の試合はありません。'
+  if (selectedFilter.value === 'tomorrow') return '明日の試合はありません。'
+  return '今週末の試合はありません。'
+})
+
+const applyTheme = (nextTheme: Theme) => {
+  theme.value = nextTheme
+  document.documentElement.dataset.theme = nextTheme
+}
+
+const toggleTheme = () => {
+  const nextTheme: Theme = theme.value === 'dark' ? 'light' : 'dark'
+  applyTheme(nextTheme)
+  localStorage.setItem('football-schedule-theme', nextTheme)
+}
+
+onMounted(() => {
+  currentDate.value = new Date()
+
+  const savedTheme = localStorage.getItem('football-schedule-theme')
+  const initialTheme: Theme = savedTheme === 'light' || savedTheme === 'dark'
+    ? savedTheme
+    : window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light'
+
+  applyTheme(initialTheme)
+})
 </script>
 
 <template>
   <main class="page-shell">
     <header class="page-header">
-      <div>
+      <div class="header-copy">
         <p class="eyebrow">FOOTBALL SCHEDULE</p>
         <h1>試合日程</h1>
         <p class="subtitle">Jリーグと欧州サッカーの、試合時間だけ。</p>
       </div>
 
-      <p v-if="generatedAtLabel" class="updated-at">
-        最終更新 {{ generatedAtLabel }}
-      </p>
+      <div class="header-meta">
+        <button
+          type="button"
+          class="theme-toggle"
+          :aria-label="theme === 'dark' ? 'ライトモードに切り替える' : 'ダークモードに切り替える'"
+          @click="toggleTheme"
+        >
+          {{ theme === 'dark' ? '☀︎ ライト' : '☾ ダーク' }}
+        </button>
+        <p v-if="generatedAtLabel" class="updated-at">
+          更新 {{ generatedAtLabel }}
+        </p>
+      </div>
     </header>
 
     <nav class="quick-filters" aria-label="日付フィルター">
-      <button type="button" class="filter-button filter-button--active">今日</button>
-      <button type="button" class="filter-button">明日</button>
-      <button type="button" class="filter-button">今週末</button>
+      <button
+        v-for="filter in dateFilters"
+        :key="filter.value"
+        type="button"
+        class="filter-button"
+        :class="{ 'filter-button--active': selectedFilter === filter.value }"
+        :aria-pressed="selectedFilter === filter.value"
+        @click="selectedFilter = filter.value"
+      >
+        {{ filter.label }}
+      </button>
     </nav>
 
     <p v-if="status === 'pending'" class="state-message">日程を読み込んでいます…</p>
@@ -133,7 +236,7 @@ const generatedAtLabel = computed(() => {
       </article>
 
       <p v-if="groupedFixtures.length === 0" class="state-message">
-        表示できる試合がありません。
+        {{ emptyMessage }}
       </p>
     </section>
   </main>
