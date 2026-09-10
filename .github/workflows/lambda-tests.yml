@@ -3,15 +3,13 @@ name: Lambda tests
 on:
   pull_request:
     paths:
-      - 'infra/lambda/fixture-fetcher/**'
-      - 'infra/lib/data-stack.ts'
+      - 'infra/**'
       - '.github/workflows/lambda-tests.yml'
   push:
     branches:
       - main
     paths:
-      - 'infra/lambda/fixture-fetcher/**'
-      - 'infra/lib/data-stack.ts'
+      - 'infra/**'
       - '.github/workflows/lambda-tests.yml'
   workflow_dispatch:
 
