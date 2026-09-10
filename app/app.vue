@@ -4,13 +4,14 @@ import type { Fixture, FixtureDocument } from './types/fixture'
 type DateFilter = 'all' | 'today' | 'tomorrow' | 'weekend'
 type Theme = 'light' | 'dark'
 
+const FIXTURE_TIME_ZONE = 'Asia/Tokyo'
+
 const runtimeConfig = useRuntimeConfig()
 const baseURL = runtimeConfig.app.baseURL.endsWith('/')
   ? runtimeConfig.app.baseURL
   : `${runtimeConfig.app.baseURL}/`
 
-const mockDataVersion = '20260911-005'
-const fixturesUrl = `${baseURL}data/fixtures.json?v=${mockDataVersion}`
+const fixturesUrl = `${baseURL}data/fixtures.json`
 
 const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
   server: false,
@@ -96,6 +97,7 @@ const saveLeagueSettings = () => {
 
 const localDateKeyFromDate = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: FIXTURE_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -109,43 +111,42 @@ const localDateKeyFromDate = (date: Date) => {
 
 const localDateKey = (iso: string) => localDateKeyFromDate(new Date(iso))
 
-const addDays = (date: Date, days: number) => {
-  const next = new Date(date)
-  next.setDate(next.getDate() + days)
-  return next
+const addDaysToDateKey = (dateKey: string, days: number) => {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const next = new Date(Date.UTC(year, month - 1, day + days))
+  return next.toISOString().slice(0, 10)
+}
+
+const dayOfWeekFromDateKey = (dateKey: string) => {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay()
 }
 
 const targetDateKeys = computed(() => {
   if (selectedFilter.value === 'all') return null
   if (!currentDate.value) return new Set<string>()
 
-  const today = new Date(
-    currentDate.value.getFullYear(),
-    currentDate.value.getMonth(),
-    currentDate.value.getDate(),
-  )
+  const todayKey = localDateKeyFromDate(currentDate.value)
 
   if (selectedFilter.value === 'today') {
-    return new Set([localDateKeyFromDate(today)])
+    return new Set([todayKey])
   }
 
   if (selectedFilter.value === 'tomorrow') {
-    return new Set([localDateKeyFromDate(addDays(today, 1))])
+    return new Set([addDaysToDateKey(todayKey, 1)])
   }
 
-  const dayOfWeek = today.getDay()
+  const dayOfWeek = dayOfWeekFromDateKey(todayKey)
   const saturdayOffset = dayOfWeek === 0 ? -1 : 6 - dayOfWeek
-  const saturday = addDays(today, saturdayOffset)
-  const sunday = addDays(saturday, 1)
+  const saturdayKey = addDaysToDateKey(todayKey, saturdayOffset)
+  const sundayKey = addDaysToDateKey(saturdayKey, 1)
 
-  return new Set([
-    localDateKeyFromDate(saturday),
-    localDateKeyFromDate(sunday),
-  ])
+  return new Set([saturdayKey, sundayKey])
 })
 
 const dateLabel = (iso: string) =>
   new Intl.DateTimeFormat('ja-JP', {
+    timeZone: FIXTURE_TIME_ZONE,
     month: 'long',
     day: 'numeric',
     weekday: 'short',
@@ -153,6 +154,7 @@ const dateLabel = (iso: string) =>
 
 const timeLabel = (iso: string) =>
   new Intl.DateTimeFormat('ja-JP', {
+    timeZone: FIXTURE_TIME_ZONE,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -209,6 +211,7 @@ const generatedAtLabel = computed(() => {
   if (!data.value?.generatedAt) return null
 
   return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: FIXTURE_TIME_ZONE,
     month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
@@ -291,7 +294,7 @@ onUnmounted(() => {
       <div class="header-copy">
         <p class="eyebrow">FOOTBALL SCHEDULE</p>
         <h1>試合日程</h1>
-        <p class="subtitle">Jリーグと欧州サッカーの、試合時間だけ。</p>
+        <p class="subtitle">日本時間で、見たいサッカーの試合時間だけ。</p>
       </div>
 
       <div class="header-meta">
