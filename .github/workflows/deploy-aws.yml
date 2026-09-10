@@ -31,6 +31,9 @@ jobs:
     concurrency:
       group: football-schedule-cdk-plan
       cancel-in-progress: true
+    outputs:
+      has_changes: ${{ steps.diff.outputs.has_changes }}
+      lambda_only: ${{ steps.classify.outputs.lambda_only }}
 
     steps:
       - name: Checkout triggering commit
@@ -86,6 +89,32 @@ jobs:
           echo "cdk diff failed with exit code $status" >&2
           exit "$status"
 
+      - name: Classify Lambda-only change
+        id: classify
+        if: steps.diff.outputs.has_changes == 'true'
+        working-directory: infra
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'lambda_only=false' >> "$GITHUB_OUTPUT"
+
+          if grep -Eq 'IAM Statement Changes|Security Group Changes' cdk-diff.txt; then
+            exit 0
+          fi
+
+          if ! grep -q 'Number of stacks with differences: 1' cdk-diff.txt; then
+            exit 0
+          fi
+
+          mapfile -t resource_lines < <(grep -E '^[[:space:]]*\[[+~-]\][[:space:]]+AWS::' cdk-diff.txt || true)
+          if [ "${#resource_lines[@]}" -ne 1 ]; then
+            exit 0
+          fi
+
+          if [[ "${resource_lines[0]}" =~ ^[[:space:]]*\[~\][[:space:]]+AWS::Lambda::Function[[:space:]]+FixtureFetcher[[:space:]]+FixtureFetcher[[:alnum:]]+$ ]]; then
+            echo 'lambda_only=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Write diff to job summary
         working-directory: infra
         run: |
@@ -121,7 +150,7 @@ jobs:
           if-no-files-found: error
 
       - name: Create approval issue
-        if: steps.diff.outputs.has_changes == 'true'
+        if: steps.diff.outputs.has_changes == 'true' && steps.classify.outputs.lambda_only != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -183,9 +212,78 @@ jobs:
             echo 'Review the diff and comment `/deploy` on the issue.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Mark Lambda-only plan for auto deploy
+        if: steps.diff.outputs.has_changes == 'true' && steps.classify.outputs.lambda_only == 'true'
+        run: echo 'Only FixtureFetcher Lambda changed. This plan will deploy automatically.' >> "$GITHUB_STEP_SUMMARY"
+
       - name: No infrastructure changes
         if: steps.diff.outputs.has_changes == 'false'
         run: echo 'No CloudFormation differences. Nothing to deploy.' >> "$GITHUB_STEP_SUMMARY"
+
+  auto-deploy-lambda:
+    needs: plan
+    if: >-
+      github.event_name != 'issue_comment' &&
+      needs.plan.outputs.has_changes == 'true' &&
+      needs.plan.outputs.lambda_only == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: football-schedule-cdk-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout planned commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download Lambda-only CDK plan
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ env.PLAN_ARTIFACT_NAME }}
+          path: approved-plan
+
+      - name: Verify planned artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_sha=$(sed -n 's/^DEPLOY_SHA=//p' approved-plan/plan.env | head -n1)
+          expected_hash=$(sed -n 's/^DIFF_SHA256=//p' approved-plan/plan.env | head -n1)
+          actual_hash=$(sha256sum approved-plan/cdk-diff.txt | awk '{print $1}')
+
+          if [ "$artifact_sha" != "$GITHUB_SHA" ]; then
+            echo "Deployment artifact commit mismatch: expected=$GITHUB_SHA actual=$artifact_sha" >&2
+            exit 1
+          fi
+
+          if [ "$actual_hash" != "$expected_hash" ]; then
+            echo "Diff artifact hash mismatch: expected=$expected_hash actual=$actual_hash" >&2
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Install CDK CLI dependencies
+        run: npm install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy FixtureFetcher Lambda change
+        working-directory: infra
+        run: |
+          npx cdk deploy \
+            --app ../approved-plan/cdk.out \
+            FootballScheduleDataStack \
+            --exclusively \
+            --require-approval never
 
   deploy:
     if: >-
