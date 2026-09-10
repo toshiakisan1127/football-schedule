@@ -74,5 +74,9 @@ export class DataStack extends Stack {
     new CfnOutput(this, 'ApiKeyParameterName', {
       value: apiKeyParameterName,
     })
+
+    new CfnOutput(this, 'FixtureFetcherFunctionName', {
+      value: fixtureFetcher.functionName,
+    })
   }
 }
