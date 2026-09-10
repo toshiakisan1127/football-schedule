@@ -7,8 +7,15 @@ import {
 } from 'aws-cdk-lib'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
+import * as iam from 'aws-cdk-lib/aws-iam'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import type { Construct } from 'constructs'
+
+const GITHUB_REPOSITORY = 'toshiakisan1127/football-schedule'
+const GITHUB_IMMUTABLE_REPOSITORY =
+  'repo:toshiakisan1127@48203235/football-schedule@1364383476'
+const CDK_BOOTSTRAP_QUALIFIER = 'hnb659fds'
+const AWS_REGION = 'ap-northeast-1'
 
 export class HostingStack extends Stack {
   readonly siteBucket: s3.Bucket
@@ -65,6 +72,39 @@ export class HostingStack extends Stack {
       })),
     })
 
+    // The account already has the standard GitHub Actions OIDC provider.
+    // Reference it here rather than owning it in another application stack.
+    const githubOidcProvider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
+      this,
+      'GitHubOidcProvider',
+      `arn:${this.partition}:iam::${this.account}:oidc-provider/token.actions.githubusercontent.com`,
+    )
+
+    const deployRole = new iam.Role(this, 'GitHubDeployRole', {
+      roleName: 'github-actions-football-schedule-cdk-deploy',
+      assumedBy: new iam.WebIdentityPrincipal(
+        githubOidcProvider.openIdConnectProviderArn,
+        {
+          StringEquals: {
+            'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+            'token.actions.githubusercontent.com:sub':
+              `${GITHUB_IMMUTABLE_REPOSITORY}:ref:refs/heads/main`,
+          },
+        },
+      ),
+      description: `Deploy ${GITHUB_REPOSITORY} production CDK stacks from GitHub Actions`,
+    })
+
+    deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['sts:AssumeRole'],
+        resources: ['deploy-role', 'file-publishing-role', 'lookup-role'].map(
+          (roleType) =>
+            `arn:${this.partition}:iam::${this.account}:role/cdk-${CDK_BOOTSTRAP_QUALIFIER}-${roleType}-${this.account}-${AWS_REGION}`,
+        ),
+      }),
+    )
+
     new CfnOutput(this, 'SiteBucketName', {
       value: this.siteBucket.bucketName,
     })
@@ -79,6 +119,10 @@ export class HostingStack extends Stack {
 
     new CfnOutput(this, 'CloudFrontDomainName', {
       value: this.distribution.distributionDomainName,
+    })
+
+    new CfnOutput(this, 'GitHubDeployRoleArn', {
+      value: deployRole.roleArn,
     })
   }
 }
