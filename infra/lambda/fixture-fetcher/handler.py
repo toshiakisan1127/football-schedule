@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -77,11 +78,16 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
             from_date=from_date,
             to_date=to_date,
         )
+        team_ids = _collect_team_ids(raw_fixtures)
         normalized = [
             fixture
             for item in raw_fixtures
             if _fixture_in_window(
-                fixture := _normalize_fixture(item, competition),
+                fixture := _normalize_fixture(
+                    item,
+                    competition,
+                    team_ids=team_ids,
+                ),
                 from_date=from_date,
                 to_date=to_date,
             )
@@ -165,6 +171,15 @@ def _fetch_competition_fixtures(
             raise FixtureDataError(
                 f"KickoffAPI response is missing a data list for {competition.app_id}"
             )
+
+        diagnostics = [_raw_fixture_diagnostic(item) for item in response_items]
+        LOGGER.info(
+            "Raw KickoffAPI fixtures: app_id=%s page=%d cursor=%s items=%s",
+            competition.app_id,
+            page,
+            cursor,
+            json.dumps(diagnostics, ensure_ascii=False, separators=(",", ":")),
+        )
         fixtures.extend(response_items)
 
         meta = payload.get("meta")
@@ -179,6 +194,7 @@ def _fetch_competition_fixtures(
                     )
                 seen_cursors.add(next_cursor_value)
                 cursor = next_cursor_value
+                page += 1
                 continue
             return fixtures
 
@@ -196,6 +212,28 @@ def _fetch_competition_fixtures(
         if current_page >= total_pages:
             return fixtures
         page = current_page + 1
+
+
+def _raw_fixture_diagnostic(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {"type": type(raw).__name__}
+
+    home = raw.get("home") or raw.get("homeTeam")
+    away = raw.get("away") or raw.get("awayTeam")
+
+    return {
+        "id": raw.get("id"),
+        "date": raw.get("date"),
+        "status": raw.get("status"),
+        "home": _raw_team_diagnostic(home),
+        "away": _raw_team_diagnostic(away),
+    }
+
+
+def _raw_team_diagnostic(team: Any) -> Any:
+    if not isinstance(team, dict):
+        return team
+    return {"id": team.get("id"), "name": team.get("name")}
 
 
 def _get_api_json(
@@ -227,9 +265,46 @@ def _get_api_json(
     return payload
 
 
+def _collect_team_ids(raw_fixtures: list[dict[str, Any]]) -> dict[str, str]:
+    team_ids: dict[str, str] = {}
+    for raw in raw_fixtures:
+        if not isinstance(raw, dict):
+            continue
+        for team in (
+            raw.get("home") or raw.get("homeTeam"),
+            raw.get("away") or raw.get("awayTeam"),
+        ):
+            if not isinstance(team, dict):
+                continue
+            name = team.get("name")
+            team_id = team.get("id")
+            if isinstance(name, str) and name and team_id not in (None, ""):
+                team_ids.setdefault(name, str(team_id))
+    return team_ids
+
+
+def _normalize_team_id(
+    raw_id: Any,
+    team_name: str,
+    team_ids: dict[str, str] | None,
+) -> str:
+    if raw_id not in (None, ""):
+        return str(raw_id)
+
+    if team_ids is not None:
+        provider_id = team_ids.get(team_name)
+        if provider_id:
+            return provider_id
+
+    digest = hashlib.sha256(team_name.encode("utf-8")).hexdigest()[:16]
+    return f"team-name-{digest}"
+
+
 def _normalize_fixture(
     raw: dict[str, Any],
     competition: Competition,
+    *,
+    team_ids: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     try:
         fixture_id = raw["id"]
@@ -240,10 +315,13 @@ def _normalize_fixture(
         if not isinstance(home, dict) or not isinstance(away, dict):
             raise KeyError("home/away teams")
 
-        home_id = home["id"]
         home_name = home["name"]
-        away_id = away["id"]
         away_name = away["name"]
+        if not isinstance(home_name, str) or not isinstance(away_name, str):
+            raise TypeError("team name")
+
+        home_id = _normalize_team_id(home.get("id"), home_name, team_ids)
+        away_id = _normalize_team_id(away.get("id"), away_name, team_ids)
 
         raw_status = raw["status"]
         if isinstance(raw_status, dict):
@@ -282,12 +360,12 @@ def _normalize_fixture(
             "country": competition.country,
         },
         "home": {
-            "id": str(home_id),
-            "name": str(home_name),
+            "id": home_id,
+            "name": home_name,
         },
         "away": {
-            "id": str(away_id),
-            "name": str(away_name),
+            "id": away_id,
+            "name": away_name,
         },
         "kickoff": _utc_iso(kickoff),
         "status": _normalize_status(status_value),
