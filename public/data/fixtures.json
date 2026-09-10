@@ -1,12 +1,12 @@
 {
   "generatedAt": "2026-09-10T15:00:00Z",
   "range": {
-    "from": "2026-09-10",
+    "from": "2026-09-11",
     "to": "2026-10-10"
   },
   "fixtures": [
     {
-      "id": "sample-j1-001",
+      "id": "sample-j1-today-001",
       "competition": {
         "id": "j1",
         "name": "J1 League",
@@ -20,11 +20,11 @@
         "id": "sample-team-2",
         "name": "Sample Yokohama"
       },
-      "kickoff": "2026-09-12T10:00:00Z",
+      "kickoff": "2026-09-11T09:00:00Z",
       "status": "scheduled"
     },
     {
-      "id": "sample-epl-001",
+      "id": "sample-epl-today-001",
       "competition": {
         "id": "epl",
         "name": "Premier League",
@@ -38,7 +38,79 @@
         "id": "sample-team-4",
         "name": "Sample London"
       },
+      "kickoff": "2026-09-11T11:30:00Z",
+      "status": "scheduled"
+    },
+    {
+      "id": "sample-j1-sat-001",
+      "competition": {
+        "id": "j1",
+        "name": "J1 League",
+        "country": "Japan"
+      },
+      "home": {
+        "id": "sample-team-5",
+        "name": "Sample Tokyo"
+      },
+      "away": {
+        "id": "sample-team-6",
+        "name": "Sample Osaka"
+      },
+      "kickoff": "2026-09-12T06:00:00Z",
+      "status": "scheduled"
+    },
+    {
+      "id": "sample-epl-sat-001",
+      "competition": {
+        "id": "epl",
+        "name": "Premier League",
+        "country": "England"
+      },
+      "home": {
+        "id": "sample-team-7",
+        "name": "Sample Manchester"
+      },
+      "away": {
+        "id": "sample-team-8",
+        "name": "Sample Brighton"
+      },
       "kickoff": "2026-09-12T14:00:00Z",
+      "status": "scheduled"
+    },
+    {
+      "id": "sample-j1-sun-001",
+      "competition": {
+        "id": "j1",
+        "name": "J1 League",
+        "country": "Japan"
+      },
+      "home": {
+        "id": "sample-team-9",
+        "name": "Sample Kobe"
+      },
+      "away": {
+        "id": "sample-team-10",
+        "name": "Sample Nagoya"
+      },
+      "kickoff": "2026-09-13T05:00:00Z",
+      "status": "scheduled"
+    },
+    {
+      "id": "sample-laliga-sun-001",
+      "competition": {
+        "id": "laliga",
+        "name": "LaLiga",
+        "country": "Spain"
+      },
+      "home": {
+        "id": "sample-team-11",
+        "name": "Sample Madrid"
+      },
+      "away": {
+        "id": "sample-team-12",
+        "name": "Sample Barcelona"
+      },
+      "kickoff": "2026-09-13T11:30:00Z",
       "status": "scheduled"
     },
     {
@@ -49,11 +121,11 @@
         "country": "Europe"
       },
       "home": {
-        "id": "sample-team-5",
+        "id": "sample-team-13",
         "name": "Sample Munich"
       },
       "away": {
-        "id": "sample-team-6",
+        "id": "sample-team-14",
         "name": "Sample Madrid"
       },
       "kickoff": "2026-09-15T19:00:00Z",
