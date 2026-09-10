@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Fixture, FixtureDocument } from './types/fixture'
 
-type DateFilter = 'today' | 'tomorrow' | 'weekend'
+type DateFilter = 'all' | 'today' | 'tomorrow' | 'weekend'
 type Theme = 'light' | 'dark'
 
 const runtimeConfig = useRuntimeConfig()
@@ -17,11 +17,12 @@ const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
   cache: 'no-store',
 })
 
-const selectedFilter = ref<DateFilter>('today')
+const selectedFilter = ref<DateFilter>('all')
 const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
 
 const dateFilters: { value: DateFilter; label: string }[] = [
+  { value: 'all', label: '全日程' },
   { value: 'today', label: '今日' },
   { value: 'tomorrow', label: '明日' },
   { value: 'weekend', label: '今週末' },
@@ -49,7 +50,8 @@ const addDays = (date: Date, days: number) => {
 }
 
 const targetDateKeys = computed(() => {
-  if (!currentDate.value) return null
+  if (selectedFilter.value === 'all') return null
+  if (!currentDate.value) return new Set<string>()
 
   const today = new Date(
     currentDate.value.getFullYear(),
@@ -138,6 +140,7 @@ const generatedAtLabel = computed(() => {
 })
 
 const emptyMessage = computed(() => {
+  if (selectedFilter.value === 'all') return '表示できる試合がありません。'
   if (selectedFilter.value === 'today') return '今日の試合はありません。'
   if (selectedFilter.value === 'tomorrow') return '明日の試合はありません。'
   return '今週末の試合はありません。'
