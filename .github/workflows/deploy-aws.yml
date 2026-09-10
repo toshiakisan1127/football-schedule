@@ -20,7 +20,7 @@ permissions:
 
 env:
   AWS_REGION: ap-northeast-1
-  AWS_DEPLOY_ROLE_ARN: arn:aws:iam::470529257240:role/github-actions-football-schedule-prod-deploy
+  AWS_DEPLOY_ROLE_ARN: arn:aws:iam::470529257240:role/github-actions-football-schedule-cdk-deploy
   APPROVAL_LABEL: cdk-deploy-approval
   PLAN_ARTIFACT_NAME: cdk-production-plan
 
