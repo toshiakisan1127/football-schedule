@@ -54,11 +54,16 @@ const groupedFixtures = computed(() => {
     groups.set(key, [...(groups.get(key) ?? []), fixture])
   }
 
-  return [...groups.entries()].map(([key, items]) => ({
-    key,
-    label: dateLabel(items[0].kickoff),
-    fixtures: items,
-  }))
+  return [...groups.entries()].flatMap(([key, items]) => {
+    const firstFixture = items[0]
+    if (!firstFixture) return []
+
+    return [{
+      key,
+      label: dateLabel(firstFixture.kickoff),
+      fixtures: items,
+    }]
+  })
 })
 
 const generatedAtLabel = computed(() => {
