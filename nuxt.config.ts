@@ -13,11 +13,11 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: 'ja' },
-      title: 'Football Schedule',
+      title: 'サッカー試合日程 | Football Schedule',
       meta: [
         {
           name: 'description',
-          content: 'Jリーグと欧州サッカーの試合日程を、見やすく確認するためのアプリ',
+          content: 'サッカーの試合日程を日本時間で見やすく確認できるアプリ。現在はプレミアリーグに対応。',
         },
       ],
     },
