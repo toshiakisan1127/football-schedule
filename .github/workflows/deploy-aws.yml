@@ -1,0 +1,312 @@
+name: Deploy AWS infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/**'
+      - '.github/workflows/deploy-aws.yml'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+  issues: write
+
+env:
+  AWS_REGION: ap-northeast-1
+  AWS_DEPLOY_ROLE_ARN: arn:aws:iam::470529257240:role/github-actions-football-schedule-prod-deploy
+  APPROVAL_LABEL: cdk-deploy-approval
+  PLAN_ARTIFACT_NAME: cdk-production-plan
+
+jobs:
+  plan:
+    if: github.event_name != 'issue_comment'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: football-schedule-cdk-plan
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout triggering commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Synthesize exact deployment assembly
+        working-directory: infra
+        run: npx cdk synth FootballScheduleHostingStack FootballScheduleDataStack
+
+      - name: Create CDK diff
+        id: diff
+        working-directory: infra
+        shell: bash
+        run: |
+          set +e
+          npx cdk diff \
+            --app cdk.out \
+            FootballScheduleHostingStack FootballScheduleDataStack \
+            --method=change-set \
+            --fail \
+            --no-color \
+            2>&1 | tee cdk-diff.txt
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$status" -eq 1 ] && grep -q 'Number of stacks with differences:' cdk-diff.txt; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "cdk diff failed with exit code $status" >&2
+          exit "$status"
+
+      - name: Write diff to job summary
+        working-directory: infra
+        run: |
+          {
+            echo '## CDK diff'
+            echo
+            echo '```text'
+            cat cdk-diff.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save plan metadata
+        if: steps.diff.outputs.has_changes == 'true'
+        working-directory: infra
+        run: |
+          diff_hash=$(sha256sum cdk-diff.txt | awk '{print $1}')
+          {
+            echo "DEPLOY_SHA=${GITHUB_SHA}"
+            echo "DIFF_SHA256=${diff_hash}"
+            echo "PLAN_RUN_ID=${GITHUB_RUN_ID}"
+          } > plan.env
+
+      - name: Upload immutable deployment plan
+        if: steps.diff.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PLAN_ARTIFACT_NAME }}
+          path: |
+            infra/cdk.out
+            infra/cdk-diff.txt
+            infra/plan.env
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Create approval issue
+        if: steps.diff.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source infra/plan.env
+          gh label create "$APPROVAL_LABEL" \
+            --repo "$GITHUB_REPOSITORY" \
+            --color D93F0B \
+            --description 'Approval required before CDK production deploy' \
+            --force
+
+          while read -r old_issue; do
+            [ -z "$old_issue" ] && continue
+            gh issue close "$old_issue" \
+              --repo "$GITHUB_REPOSITORY" \
+              --comment "Superseded by a newer CDK plan for ${DEPLOY_SHA}."
+          done < <(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label "$APPROVAL_LABEL" --json number --jq '.[].number')
+
+          short_sha=${DEPLOY_SHA:0:7}
+          diff_preview=$(sed -n '1,700p' infra/cdk-diff.txt)
+          body_file=$(mktemp)
+          cat > "$body_file" <<EOF
+          <!-- deploy-sha:${DEPLOY_SHA} -->
+          <!-- diff-sha256:${DIFF_SHA256} -->
+          <!-- plan-run-id:${PLAN_RUN_ID} -->
+
+          ## Production CDK deploy approval
+
+          **Commit:** \`${DEPLOY_SHA}\`  
+          **Diff SHA-256:** \`${DIFF_SHA256}\`
+
+          main に入ったこの commit の CDK diff です。内容を確認して deploy してよければ、このIssueに次の1行だけコメントしてください。
+
+          \`/deploy\`
+
+          承認後はこのrunで生成した **同じCDK assembly** を使い、承認対象commitが現在のmainと一致すること・diff artifactのhashが一致することを再確認してからdeployします。
+
+          <details>
+          <summary>CDK diff</summary>
+
+          \`\`\`text
+          ${diff_preview}
+          \`\`\`
+          </details>
+          EOF
+
+          issue_url=$(gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "CDK deploy approval: ${short_sha}" \
+            --body-file "$body_file" \
+            --label "$APPROVAL_LABEL")
+
+          {
+            echo
+            echo "### Approval required"
+            echo "$issue_url"
+            echo 'Review the diff and comment `/deploy` on the issue.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: No infrastructure changes
+        if: steps.diff.outputs.has_changes == 'false'
+        run: echo 'No CloudFormation differences. Nothing to deploy.' >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.comment.user.login == 'toshiakisan1127' &&
+      github.event.comment.body == '/deploy' &&
+      !github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    concurrency:
+      group: football-schedule-cdk-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Validate approval issue
+        id: approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          labels=$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
+          if ! grep -Fxq "$APPROVAL_LABEL" <<< "$labels"; then
+            echo 'This is not a CDK deployment approval issue.' >&2
+            exit 1
+          fi
+
+          body=$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
+          deploy_sha=$(sed -n 's/<!-- deploy-sha:\([0-9a-f]\{40\}\) -->/\1/p' <<< "$body" | head -n1)
+          diff_hash=$(sed -n 's/<!-- diff-sha256:\([0-9a-f]\{64\}\) -->/\1/p' <<< "$body" | head -n1)
+          plan_run_id=$(sed -n 's/<!-- plan-run-id:\([0-9][0-9]*\) -->/\1/p' <<< "$body" | head -n1)
+
+          if [ -z "$deploy_sha" ] || [ -z "$diff_hash" ] || [ -z "$plan_run_id" ]; then
+            echo 'Approval metadata is missing or invalid.' >&2
+            exit 1
+          fi
+
+          echo "deploy_sha=$deploy_sha" >> "$GITHUB_OUTPUT"
+          echo "diff_hash=$diff_hash" >> "$GITHUB_OUTPUT"
+          echo "plan_run_id=$plan_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout approved commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.approval.outputs.deploy_sha }}
+          fetch-depth: 0
+
+      - name: Reject stale approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          DEPLOY_SHA: ${{ steps.approval.outputs.deploy_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          current_main=$(git rev-parse origin/main)
+          if [ "$DEPLOY_SHA" != "$current_main" ]; then
+            gh issue close "$ISSUE_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --comment "Deploy rejected: approved commit \`${DEPLOY_SHA}\` is no longer the current main (\`${current_main}\`). A new plan is required."
+            exit 1
+          fi
+
+      - name: Download approved CDK plan
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ env.PLAN_ARTIFACT_NAME }}
+          path: approved-plan
+          run-id: ${{ steps.approval.outputs.plan_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify approved diff artifact
+        env:
+          EXPECTED_DIFF_HASH: ${{ steps.approval.outputs.diff_hash }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_hash=$(sha256sum approved-plan/cdk-diff.txt | awk '{print $1}')
+          if [ "$actual_hash" != "$EXPECTED_DIFF_HASH" ]; then
+            echo "Diff artifact hash mismatch: expected=$EXPECTED_DIFF_HASH actual=$actual_hash" >&2
+            exit 1
+          fi
+
+          artifact_sha=$(sed -n 's/^DEPLOY_SHA=//p' approved-plan/plan.env | head -n1)
+          if [ "$artifact_sha" != "${{ steps.approval.outputs.deploy_sha }}" ]; then
+            echo 'Deployment artifact commit does not match the approved commit.' >&2
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Install CDK CLI dependencies
+        run: npm install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy approved CDK assembly
+        working-directory: infra
+        run: |
+          npx cdk deploy \
+            --app ../approved-plan/cdk.out \
+            FootballScheduleHostingStack FootballScheduleDataStack \
+            --require-approval never
+
+      - name: Mark approval complete
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          DEPLOY_SHA: ${{ steps.approval.outputs.deploy_sha }}
+        run: |
+          gh issue close "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --comment "Deployed \`${DEPLOY_SHA}\` successfully to AWS production."
