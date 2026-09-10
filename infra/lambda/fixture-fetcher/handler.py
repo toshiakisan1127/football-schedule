@@ -34,8 +34,6 @@ class Competition:
 
 COMPETITIONS = (
     Competition("epl", "en.1", "Premier League", "England"),
-    Competition("ucl", "lg_4WmajCeHmdkK", "UEFA Champions League", "Europe"),
-    Competition("laliga", "es.1", "LaLiga", "Spain"),
 )
 
 _http = requests.Session()
