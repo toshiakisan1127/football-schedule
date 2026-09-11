@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'infra/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/deploy-aws.yml'
   workflow_dispatch:
 
@@ -251,10 +253,22 @@ jobs:
           set -euo pipefail
           git fetch origin main --depth=1
           current_main=$(git rev-parse origin/main)
-          if [ "$GITHUB_SHA" != "$current_main" ]; then
-            echo "Deploy rejected: planned commit $GITHUB_SHA is no longer the current main ($current_main). A new plan is required." >&2
-            exit 1
+
+          if [ "$GITHUB_SHA" = "$current_main" ]; then
+            exit 0
           fi
+
+          if git diff --quiet "$GITHUB_SHA" "$current_main" -- \
+            infra/ \
+            package.json \
+            package-lock.json \
+            .github/workflows/deploy-aws.yml; then
+            echo "main advanced from $GITHUB_SHA to $current_main, but deployment inputs are unchanged. Continuing with the approved immutable plan."
+            exit 0
+          fi
+
+          echo "Deploy rejected: deployment inputs changed after plan $GITHUB_SHA. Current main is $current_main; a new plan is required." >&2
+          exit 1
 
       - name: Download approved CDK plan
         uses: actions/download-artifact@v5
