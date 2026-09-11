@@ -1,12 +1,13 @@
 # Football data source
 
-The MVP fetcher reads fixtures from KickoffAPI v2 and publishes the application-owned JSON document consumed by the frontend.
+The fixture fetcher reads fixtures from KickoffAPI v1 and publishes the application-owned JSON document consumed by the frontend.
 
-## MVP competitions
+## Enabled competitions
 
-- Premier League (`epl` / provider league `en.1`)
-- UEFA Champions League (`ucl` / provider league `lg_4WmajCeHmdkK`)
-- LaLiga (`laliga` / provider league `es.1`)
+- Premier League (`epl` / provider league `39`)
+- La Liga (`laliga` / provider league `140`)
+
+UEFA Champions League is intentionally kept out of the current production feed and will be enabled separately after the two domestic leagues are verified in production.
 
 J1 League is intentionally excluded for now because KickoffAPI's current J1 catalog data is only available through the 2025 season and a `season=2026` fixture request returned no matches.
 
@@ -14,9 +15,11 @@ Application competition IDs are stable app-owned slugs and do not depend on prov
 
 ## Provider handling
 
-KickoffAPI v2 production responses currently use a `{ data, meta }` envelope with cursor pagination via `meta.nextCursor`. The fetcher also accepts the page-based v2 envelope described in KickoffAPI's migration documentation.
+KickoffAPI v1 production responses use a `{ response, paging }` envelope. The fetcher requests each configured competition independently with the league ID, season, `from`, and `to` parameters and follows `paging.current` / `paging.total` when multiple pages are returned.
 
 The provider receives `from` / `to`, but the Lambda also filters normalized fixtures against the configured date window in JST. This prevents out-of-window fixtures from being published if the provider returns a wider season result set.
+
+KickoffAPI v1 is deprecated and is scheduled to sunset on 1 January 2027, so a v2 migration remains a future task. For the current MVP, v1 is kept because the Premier League fixture flow has already been verified in production and La Liga uses the same response contract.
 
 ## Publishing rule
 
@@ -32,4 +35,4 @@ The KickoffAPI key is stored as an SSM SecureString at `/football-schedule/kicko
 
 ## Tests
 
-`pytest` covers status mapping, both observed and documented v2 fixture shapes, UTC conversion, JST date-window filtering, score preservation, season selection, cursor/page pagination, API error handling, and atomic publish behavior.
+`pytest` covers configured competition mappings, status mapping, observed/documented v1 fixture shapes, UTC conversion, JST date-window filtering, score preservation, season selection, v1 pagination, API error handling, and atomic multi-competition publishing.
