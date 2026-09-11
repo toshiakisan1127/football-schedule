@@ -12,12 +12,14 @@ from zoneinfo import ZoneInfo
 import boto3
 import requests
 
+from laliga_v2 import LaLigaV2SelectionError, select_canonical_fixtures
 from validation import SCHEMA_VERSION, FixtureDocumentValidationError, validate_fixture_document
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 API_BASE_URL = "https://api.kickoffapi.com"
 JST = ZoneInfo("Asia/Tokyo")
+LALIGA_V2_LEAGUE_ID = "es.1"
 
 SCHEDULED_STATUSES = {"tbd", "ns", "scheduled", "not started"}
 LIVE_STATUSES = {"1h", "ht", "2h", "et", "bt", "p", "live"}
@@ -60,7 +62,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     season = _season_for(today_jst)
 
     LOGGER.info(
-        "Starting fixture refresh: provider=v1 from=%s to=%s season=%d competitions=%d",
+        "Starting fixture refresh: providers=mixed from=%s to=%s season=%d competitions=%d",
         from_date, to_date, season, len(COMPETITIONS),
     )
     api_key = _load_api_key(parameter_name)
@@ -85,9 +87,18 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
             )
         ]
         fixtures.extend(normalized)
+        provider = "v2" if competition.app_id == "laliga" else "v1"
+        provider_league_id: int | str = (
+            LALIGA_V2_LEAGUE_ID if competition.app_id == "laliga" else competition.api_league_id
+        )
         LOGGER.info(
-            "Fetched competition: provider=v1 app_id=%s api_league_id=%s season=%d raw=%d kept=%d",
-            competition.app_id, competition.api_league_id, season, len(raw_fixtures), len(normalized),
+            "Fetched competition: provider=%s app_id=%s api_league_id=%s season=%d raw=%d kept=%d",
+            provider,
+            competition.app_id,
+            provider_league_id,
+            season,
+            len(raw_fixtures),
+            len(normalized),
         )
 
     fixtures.sort(key=lambda fixture: (fixture["kickoff"], fixture["id"]))
@@ -132,6 +143,26 @@ def _validate_document(document: dict[str, Any]) -> None:
 def _fetch_competition_fixtures(
     *, api_key: str, competition: Competition, season: int, from_date: date, to_date: date
 ) -> list[dict[str, Any]]:
+    if competition.app_id == "laliga":
+        return _fetch_laliga_v2_competition_fixtures(
+            api_key=api_key,
+            competition=competition,
+            season=season,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    return _fetch_v1_competition_fixtures(
+        api_key=api_key,
+        competition=competition,
+        season=season,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+
+def _fetch_v1_competition_fixtures(
+    *, api_key: str, competition: Competition, season: int, from_date: date, to_date: date
+) -> list[dict[str, Any]]:
     fixtures: list[dict[str, Any]] = []
     page = 1
     while True:
@@ -170,6 +201,65 @@ def _fetch_competition_fixtures(
         if current_page >= total_pages:
             return fixtures
         page = current_page + 1
+
+
+def _fetch_laliga_v2_competition_fixtures(
+    *, api_key: str, competition: Competition, season: int, from_date: date, to_date: date
+) -> list[dict[str, Any]]:
+    fixtures: list[dict[str, Any]] = []
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+
+    while True:
+        params: dict[str, Any] = {
+            "league": LALIGA_V2_LEAGUE_ID,
+            "season": season,
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+
+        payload = _get_api_json("/api/v2/fixtures", api_key=api_key, params=params)
+        data = payload.get("data")
+        if not isinstance(data, list):
+            raise FixtureDataError("KickoffAPI v2 response is missing a data list for laliga")
+        fixtures.extend(data)
+
+        meta = payload.get("meta")
+        if not isinstance(meta, dict):
+            raise FixtureDataError("KickoffAPI v2 response is missing meta for laliga")
+        next_cursor = meta.get("nextCursor")
+        LOGGER.info(
+            "Raw KickoffAPI v2 fixtures: app_id=%s cursor=%s count=%d next_cursor=%s",
+            competition.app_id,
+            cursor,
+            len(data),
+            next_cursor,
+        )
+        if next_cursor in (None, ""):
+            break
+
+        next_cursor_string = str(next_cursor)
+        if next_cursor_string in seen_cursors:
+            raise FixtureDataError(f"KickoffAPI v2 cursor repeated for laliga: {next_cursor_string}")
+        seen_cursors.add(next_cursor_string)
+        cursor = next_cursor_string
+
+    try:
+        selected = select_canonical_fixtures(
+            fixtures,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    except LaLigaV2SelectionError as exc:
+        raise FixtureDataError(f"La Liga v2 canonical fixture selection failed: {exc}") from exc
+
+    LOGGER.info(
+        "Selected canonical La Liga v2 fixtures: season=%d fetched=%d selected=%d",
+        season,
+        len(fixtures),
+        len(selected),
+    )
+    return selected
 
 
 def _raw_fixture_diagnostic(raw: Any) -> dict[str, Any]:
@@ -289,8 +379,11 @@ def _normalize_fixture(
         raise FixtureDataError(f"Invalid status for fixture {fixture_id}: {status_value!r}")
 
     goals = raw.get("goals")
+    provider_score = raw.get("score")
     if isinstance(goals, dict):
         home_goals, away_goals = goals.get("home"), goals.get("away")
+    elif isinstance(provider_score, dict):
+        home_goals, away_goals = provider_score.get("home"), provider_score.get("away")
     else:
         home_goals, away_goals = raw.get("homeScore"), raw.get("awayScore")
         if home_goals is None:
