@@ -19,6 +19,7 @@ env:
   AWS_REGION: ap-northeast-1
   AWS_DEPLOY_ROLE_ARN: arn:aws:iam::470529257240:role/github-actions-football-schedule-cdk-deploy
   PLAN_ARTIFACT_NAME: cdk-production-plan
+  BATCH_ALERT_EMAIL: ${{ vars.BATCH_ALERT_EMAIL }}
 
 jobs:
   plan:
