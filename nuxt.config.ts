@@ -1,9 +1,9 @@
 import tailwindcss from '@tailwindcss/vite'
 
 const siteUrl = 'https://dus59dgj79li1.cloudfront.net/'
-const siteTitle = 'サッカー試合日程｜プレミアリーグ・ラ・リーガを日本時間で確認'
-const siteDescription = 'プレミアリーグとラ・リーガの試合日程を日本時間で見やすく確認。今日・明日・今週末や好きなチーム、日本人選手所属チームで絞り込める無料のサッカー日程アプリ。'
-const ogImageUrl = new URL('og-image.svg', siteUrl).toString()
+const siteTitle = 'Match Calendar｜欧州・日本のサッカー日程を日本時間で確認'
+const siteDescription = '欧州・日本のサッカー試合日程を日本時間で見やすく確認。今日・明日・今週末や好きなチーム、日本人選手所属チームで絞り込める無料のサッカー日程アプリ。'
+const ogImageUrl = new URL('og-image.jpg', siteUrl).toString()
 
 export default defineNuxtConfig({
   ssr: true,
@@ -36,20 +36,20 @@ export default defineNuxtConfig({
         { property: 'og:type', content: 'website' },
         { property: 'og:url', content: siteUrl },
         { property: 'og:image', content: ogImageUrl },
-        { property: 'og:image:type', content: 'image/svg+xml' },
+        { property: 'og:image:type', content: 'image/jpeg' },
         { property: 'og:image:width', content: '1200' },
         { property: 'og:image:height', content: '630' },
-        { property: 'og:site_name', content: 'サッカー試合日程' },
+        { property: 'og:site_name', content: 'Match Calendar' },
         { property: 'og:locale', content: 'ja_JP' },
         { name: 'twitter:card', content: 'summary_large_image' },
         { name: 'twitter:title', content: siteTitle },
         { name: 'twitter:description', content: siteDescription },
         { name: 'twitter:image', content: ogImageUrl },
-        { name: 'theme-color', content: '#0c1117' },
+        { name: 'theme-color', content: '#0F6B3A' },
         { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
-        { name: 'apple-mobile-web-app-title', content: 'サッカー日程' },
+        { name: 'apple-mobile-web-app-title', content: 'Match Calendar' },
       ],
       link: [
         { rel: 'canonical', href: siteUrl },
@@ -63,7 +63,7 @@ export default defineNuxtConfig({
           innerHTML: JSON.stringify({
             '@context': 'https://schema.org',
             '@type': 'WebApplication',
-            name: 'サッカー試合日程',
+            name: 'Match Calendar',
             url: siteUrl,
             description: siteDescription,
             applicationCategory: 'SportsApplication',
@@ -80,15 +80,15 @@ export default defineNuxtConfig({
     includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png'],
     manifest: {
       id: '/',
-      name: 'サッカー試合日程',
-      short_name: 'サッカー日程',
-      description: 'プレミアリーグとラ・リーガの試合日程を日本時間で見やすく確認できるアプリ。',
+      name: 'Match Calendar',
+      short_name: 'Match Calendar',
+      description: '欧州・日本のサッカー試合日程を日本時間で見やすく確認できるアプリ。',
       lang: 'ja',
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      background_color: '#0c1117',
-      theme_color: '#0c1117',
+      background_color: '#0B2545',
+      theme_color: '#0F6B3A',
       categories: ['sports'],
       icons: [
         {
@@ -100,12 +100,6 @@ export default defineNuxtConfig({
           src: '/pwa-512x512.png',
           sizes: '512x512',
           type: 'image/png',
-        },
-        {
-          src: '/pwa-512x512.png',
-          sizes: '512x512',
-          type: 'image/png',
-          purpose: 'maskable',
         },
       ],
     },
