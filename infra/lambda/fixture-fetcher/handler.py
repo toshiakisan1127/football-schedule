@@ -35,6 +35,7 @@ class Competition:
 
 COMPETITIONS = (
     Competition("epl", 39, "Premier League", "England"),
+    Competition("laliga", 140, "La Liga", "Spain"),
 )
 
 _http = requests.Session()
@@ -257,7 +258,6 @@ def _get_api_json(
     errors = payload.get("errors") or payload.get("error")
     if errors:
         raise FixtureDataError(f"KickoffAPI returned errors: {errors!r}")
-
     return payload
 
 
