@@ -46,9 +46,14 @@ def competition() -> handler.Competition:
     return handler.COMPETITIONS[0]
 
 
-def test_mvp_fetches_only_premier_league_v1() -> None:
-    assert [item.app_id for item in handler.COMPETITIONS] == ["epl"]
-    assert [item.api_league_id for item in handler.COMPETITIONS] == [39]
+def test_mvp_fetches_premier_league_and_laliga_v1() -> None:
+    assert [
+        (item.app_id, item.api_league_id, item.name, item.country)
+        for item in handler.COMPETITIONS
+    ] == [
+        ("epl", 39, "Premier League", "England"),
+        ("laliga", 140, "La Liga", "Spain"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -192,6 +197,34 @@ def test_fetch_competition_fixtures_uses_v1_range_and_paging(
     assert calls[1]["params"]["page"] == 2
 
 
+def test_fetch_competition_fixtures_uses_laliga_league_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+
+    def fake_get_api_json(path: str, *, api_key: str, params: dict) -> dict:
+        captured.update({"path": path, "api_key": api_key, "params": params.copy()})
+        return {
+            "response": [],
+            "results": 0,
+            "paging": {"current": 1, "total": 1},
+        }
+
+    monkeypatch.setattr(handler, "_get_api_json", fake_get_api_json)
+
+    handler._fetch_competition_fixtures(
+        api_key="secret",
+        competition=handler.COMPETITIONS[1],
+        season=2026,
+        from_date=date(2026, 9, 10),
+        to_date=date(2026, 10, 11),
+    )
+
+    assert captured["path"] == "/api/v1/fixtures"
+    assert captured["params"]["league"] == 140
+    assert captured["params"]["season"] == 2026
+
+
 def test_fetch_competition_fixtures_rejects_missing_v1_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -235,7 +268,7 @@ def test_api_uses_kickoff_header_and_rejects_errors(
     assert captured["headers"] == {"x-api-key": "secret"}
 
 
-def test_lambda_does_not_publish_when_premier_league_fetch_fails(
+def test_lambda_does_not_publish_when_a_competition_fetch_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("DATA_BUCKET_NAME", "fixture-bucket")
@@ -246,19 +279,19 @@ def test_lambda_does_not_publish_when_premier_league_fetch_fails(
     monkeypatch.setattr(handler, "_load_api_key", lambda _: "secret")
 
     def fake_fetch(**kwargs) -> list[dict]:
-        raise handler.FixtureDataError("Premier League fetch failed")
+        raise handler.FixtureDataError("Competition fetch failed")
 
     published: list[dict] = []
     monkeypatch.setattr(handler, "_fetch_competition_fixtures", fake_fetch)
     monkeypatch.setattr(handler, "_publish_document", lambda **kwargs: published.append(kwargs))
 
-    with pytest.raises(handler.FixtureDataError, match="Premier League fetch failed"):
+    with pytest.raises(handler.FixtureDataError, match="Competition fetch failed"):
         handler.lambda_handler({}, None)
 
     assert published == []
 
 
-def test_lambda_publishes_once_after_premier_league_succeeds(
+def test_lambda_publishes_once_after_all_competitions_succeed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("DATA_BUCKET_NAME", "fixture-bucket")
@@ -269,9 +302,11 @@ def test_lambda_publishes_once_after_premier_league_succeeds(
     monkeypatch.setattr(handler, "_load_api_key", lambda _: "secret")
 
     def fake_fetch(**kwargs) -> list[dict]:
+        current_competition = kwargs["competition"]
+        fixture_id = 1001 if current_competition.app_id == "epl" else 2001
         return [
             raw_fixture(
-                fixture_id=1001,
+                fixture_id=fixture_id,
                 kickoff="2026-09-12T06:00:00Z",
                 status="FT",
                 home_goals=2,
@@ -287,10 +322,13 @@ def test_lambda_publishes_once_after_premier_league_succeeds(
 
     assert result["ok"] is True
     assert result["published"] is True
-    assert result["fixtureCount"] == 1
+    assert result["fixtureCount"] == 2
     assert len(published) == 1
 
     body = json.loads(published[0]["body"].decode("utf-8"))
-    assert {fixture["competition"]["id"] for fixture in body["fixtures"]} == {"epl"}
+    assert {fixture["competition"]["id"] for fixture in body["fixtures"]} == {
+        "epl",
+        "laliga",
+    }
     assert all(fixture["score"] is not None for fixture in body["fixtures"])
     assert body["range"]["from"] <= body["range"]["to"]
