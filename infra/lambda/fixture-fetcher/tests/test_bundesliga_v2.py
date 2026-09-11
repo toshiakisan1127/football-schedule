@@ -70,7 +70,7 @@ def test_single_fixture_is_preserved_without_requiring_a_sibling() -> None:
     assert selected == [single]
 
 
-def test_unresolved_duplicate_group_is_skipped(caplog: pytest.LogCaptureFixture) -> None:
+def test_unresolved_duplicate_group_is_preserved(caplog: pytest.LogCaptureFixture) -> None:
     raw = [
         fixture(fixture_id="a", kickoff="2026-09-11T18:30:00.000Z", time=None),
         fixture(fixture_id="b", kickoff="2026-09-11T19:30:00.000Z", time=None),
@@ -83,8 +83,8 @@ def test_unresolved_duplicate_group_is_skipped(caplog: pytest.LogCaptureFixture)
             to_date=date(2026, 10, 11),
         )
 
-    assert selected == []
-    assert "Skipping unresolved Bundesliga v2 duplicate fixture" in caplog.text
+    assert selected == raw
+    assert "Preserving unresolved Bundesliga v2 duplicate fixture" in caplog.text
 
 
 def test_multiple_verified_candidates_fail_closed() -> None:
