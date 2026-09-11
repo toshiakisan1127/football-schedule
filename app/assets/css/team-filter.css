@@ -1,0 +1,54 @@
+.filter-summaries {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.filter-summaries .league-summary {
+  margin-bottom: 0;
+}
+
+.team-search-wrap {
+  padding: 8px 8px 0;
+}
+
+.team-search {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 9px 11px;
+  outline: none;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.team-search::placeholder {
+  color: var(--text-subtle);
+}
+
+.team-search:focus {
+  border-color: var(--text-muted);
+}
+
+.league-options--teams {
+  max-height: min(430px, calc(100dvh - 240px));
+}
+
+.team-search-empty {
+  margin: 16px 8px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .filter-summaries {
+    gap: 7px;
+    margin-bottom: 13px;
+  }
+
+  .league-options--teams {
+    max-height: calc(78dvh - 185px);
+  }
+}
