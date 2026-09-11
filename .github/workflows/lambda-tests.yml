@@ -42,6 +42,15 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
+      - name: Verify deploy package imports
+        run: |
+          package_dir="$(mktemp -d)"
+          bash package.sh "$package_dir"
+          (
+            cd "$package_dir"
+            python -c 'import handler; import validation'
+          )
+
   infra-typecheck:
     runs-on: ubuntu-latest
 

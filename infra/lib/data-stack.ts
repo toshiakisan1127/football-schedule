@@ -32,11 +32,7 @@ export class DataStack extends Stack {
       code: lambda.Code.fromAsset(path.join(process.cwd(), 'lambda', 'fixture-fetcher'), {
         bundling: {
           image: lambda.Runtime.PYTHON_3_13.bundlingImage,
-          command: [
-            'bash',
-            '-c',
-            'python -m pip install --no-cache-dir -r requirements.txt -t /asset-output && cp handler.py /asset-output/handler.py',
-          ],
+          command: ['bash', '-c', 'bash package.sh /asset-output'],
         },
       }),
       description: 'Fetch and normalize football fixtures before publishing them to S3.',
