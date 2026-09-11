@@ -12,7 +12,14 @@ from zoneinfo import ZoneInfo
 import boto3
 import requests
 
-from laliga_v2 import LaLigaV2SelectionError, select_canonical_fixtures
+from bundesliga_v2 import (
+    BundesligaV2SelectionError,
+    select_canonical_fixtures as select_bundesliga_canonical_fixtures,
+)
+from laliga_v2 import (
+    LaLigaV2SelectionError,
+    select_canonical_fixtures as select_laliga_canonical_fixtures,
+)
 from team_logos import get_static_team_logo
 from validation import SCHEMA_VERSION, FixtureDocumentValidationError, validate_fixture_document
 
@@ -69,7 +76,10 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
 
     LOGGER.info(
         "Starting fixture refresh: providers=mixed from=%s to=%s season=%d competitions=%d",
-        from_date, to_date, season, len(COMPETITIONS),
+        from_date,
+        to_date,
+        season,
+        len(COMPETITIONS),
     )
     api_key = _load_api_key(parameter_name)
     fixtures: list[dict[str, Any]] = []
@@ -108,7 +118,9 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     fixtures.sort(key=lambda fixture: (fixture["kickoff"], fixture["id"]))
     document = {
         "schemaVersion": SCHEMA_VERSION,
-        "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "generatedAt": datetime.now(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
         "range": {"from": from_date.isoformat(), "to": to_date.isoformat()},
         "fixtures": fixtures,
     }
@@ -118,7 +130,11 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     _publish_document(bucket_name=bucket_name, object_key=object_key, body=body)
     LOGGER.info(
         "Published fixture document: bucket=%s key=%s fixtures=%d bytes=%d schema_version=%d",
-        bucket_name, object_key, len(fixtures), len(body), SCHEMA_VERSION,
+        bucket_name,
+        object_key,
+        len(fixtures),
+        len(body),
+        SCHEMA_VERSION,
     )
     return {
         "ok": True,
@@ -140,7 +156,8 @@ def _validate_document(document: dict[str, Any]) -> None:
         raise FixtureDataError(f"Fixture document validation failed: {exc}") from exc
     LOGGER.info(
         "Validated fixture document: schema_version=%d fixtures=%d",
-        document["schemaVersion"], len(document["fixtures"]),
+        document["schemaVersion"],
+        len(document["fixtures"]),
     )
 
 
@@ -156,10 +173,9 @@ def _fetch_competition_fixtures(
             to_date=to_date,
         )
     if competition.app_id == "bundesliga":
-        return _fetch_v2_fixture_pages(
+        return _fetch_bundesliga_v2_competition_fixtures(
             api_key=api_key,
             competition=competition,
-            league_id=V2_LEAGUE_IDS[competition.app_id],
             season=season,
             from_date=from_date,
             to_date=to_date,
@@ -283,7 +299,7 @@ def _fetch_laliga_v2_competition_fixtures(
     )
 
     try:
-        selected = select_canonical_fixtures(
+        selected = select_laliga_canonical_fixtures(
             fixtures,
             from_date=from_date,
             to_date=to_date,
@@ -293,6 +309,36 @@ def _fetch_laliga_v2_competition_fixtures(
 
     LOGGER.info(
         "Selected canonical La Liga v2 fixtures: season=%d fetched=%d selected=%d",
+        season,
+        len(fixtures),
+        len(selected),
+    )
+    return selected
+
+
+def _fetch_bundesliga_v2_competition_fixtures(
+    *, api_key: str, competition: Competition, season: int, from_date: date, to_date: date
+) -> list[dict[str, Any]]:
+    fixtures = _fetch_v2_fixture_pages(
+        api_key=api_key,
+        competition=competition,
+        league_id=V2_LEAGUE_IDS[competition.app_id],
+        season=season,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+    try:
+        selected = select_bundesliga_canonical_fixtures(
+            fixtures,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    except BundesligaV2SelectionError as exc:
+        raise FixtureDataError(f"Bundesliga v2 canonical fixture selection failed: {exc}") from exc
+
+    LOGGER.info(
+        "Selected canonical Bundesliga v2 fixtures: season=%d fetched=%d selected=%d",
         season,
         len(fixtures),
         len(selected),
@@ -514,8 +560,11 @@ def _parse_datetime(value: str) -> datetime:
 
 
 def _utc_iso(value: str) -> str:
-    return _parse_datetime(value).astimezone(timezone.utc).isoformat(timespec="seconds").replace(
-        "+00:00", "Z"
+    return (
+        _parse_datetime(value)
+        .astimezone(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
     )
 
 
