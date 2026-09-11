@@ -65,7 +65,27 @@ TEAM_LOGOS: dict[str, dict[str, str]] = {
         "VfB Stuttgart": "https://images.kickoffapi.com/images/logos/172.png?format=webp",
         "Werder Bremen": "https://images.kickoffapi.com/images/logos/162.png?format=webp",
     },
-    "ligue1": {},
+    "ligue1": {
+        "Angers": "https://images.kickoffapi.com/images/logos/77.png?format=webp",
+        "Auxerre": "https://images.kickoffapi.com/images/logos/108.png?format=webp",
+        "Estac Troyes": "https://images.kickoffapi.com/images/logos/110.png?format=webp",
+        "LE Havre": "https://images.kickoffapi.com/images/logos/111.png?format=webp",
+        "Le Mans": "https://images.kickoffapi.com/images/logos/1298.png?format=webp",
+        "Lens": "https://images.kickoffapi.com/images/logos/116.png?format=webp",
+        "Lille": "https://images.kickoffapi.com/images/logos/79.png?format=webp",
+        "Lorient": "https://images.kickoffapi.com/images/logos/97.png?format=webp",
+        "Lyon": "https://images.kickoffapi.com/images/logos/80.png?format=webp",
+        "Marseille": "https://images.kickoffapi.com/images/logos/81.png?format=webp",
+        "Monaco": "https://images.kickoffapi.com/images/logos/91.png?format=webp",
+        "Nice": "https://images.kickoffapi.com/images/logos/84.png?format=webp",
+        "Paris FC": "https://images.kickoffapi.com/images/logos/114.png?format=webp",
+        "Paris Saint Germain": "https://images.kickoffapi.com/images/logos/85.png?format=webp",
+        "Rennes": "https://images.kickoffapi.com/images/logos/94.png?format=webp",
+        "Stade Brestois 29": "https://images.kickoffapi.com/images/logos/106.png?format=webp",
+        "Strasbourg": "https://images.kickoffapi.com/images/logos/95.png?format=webp",
+        "Toulouse": "https://images.kickoffapi.com/images/logos/96.png?format=webp",
+    },
+    "j1": {},
 }
 
 
