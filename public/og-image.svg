@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" rx="0" fill="#0c1117"/>
+  <rect x="70" y="70" width="1060" height="490" rx="40" fill="#141c26" stroke="#263342" stroke-width="2"/>
+  <image href="pwa-512x512.png" x="105" y="150" width="330" height="330"/>
+  <text x="490" y="245" fill="#f8fafc" font-family="system-ui,-apple-system,'Noto Sans JP',sans-serif" font-size="64" font-weight="700">サッカー試合日程</text>
+  <text x="493" y="310" fill="#cbd5e1" font-family="system-ui,-apple-system,'Noto Sans JP',sans-serif" font-size="30">Football Schedule</text>
+  <text x="493" y="395" fill="#e2e8f0" font-family="system-ui,-apple-system,'Noto Sans JP',sans-serif" font-size="34" font-weight="600">日本時間で、見たい試合をすぐ確認。</text>
+  <text x="493" y="455" fill="#94a3b8" font-family="system-ui,-apple-system,'Noto Sans JP',sans-serif" font-size="25">Premier League · La Liga</text>
+</svg>
