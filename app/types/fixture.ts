@@ -27,12 +27,22 @@ export interface Fixture {
   score: FixtureScore | null
 }
 
+export interface FixtureRange {
+  from: string
+  to: string
+}
+
 export interface FixtureDocument {
   schemaVersion: 1
+  competition: FixtureCompetition
   generatedAt: string
-  range: {
-    from: string
-    to: string
-  }
+  range: FixtureRange
+  fixtures: Fixture[]
+}
+
+export interface LegacyFixtureDocument {
+  schemaVersion: 1
+  generatedAt: string
+  range: FixtureRange
   fixtures: Fixture[]
 }
