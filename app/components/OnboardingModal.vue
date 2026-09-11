@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 
 type OnboardingSlide = {
   label: string
@@ -15,10 +15,7 @@ const isOpen = ref(false)
 const currentStep = ref(0)
 const isStandalone = ref(false)
 const isIOS = ref(false)
-const dialogRef = ref<HTMLElement | null>(null)
 const headingRef = ref<HTMLElement | null>(null)
-const primaryButtonRef = ref<HTMLButtonElement | null>(null)
-let previousBodyOverflow = ''
 
 const slides = computed<OnboardingSlide[]>(() => {
   const pwaSlide: OnboardingSlide = isStandalone.value
@@ -79,10 +76,6 @@ const slides = computed<OnboardingSlide[]>(() => {
 const currentSlide = computed(() => slides.value[currentStep.value] ?? slides.value[0]!)
 const isLastStep = computed(() => currentStep.value === slides.value.length - 1)
 
-const restoreBodyScroll = () => {
-  document.body.style.overflow = previousBodyOverflow
-}
-
 const finishOnboarding = () => {
   try {
     localStorage.setItem(STORAGE_KEY, String(ONBOARDING_VERSION))
@@ -91,7 +84,6 @@ const finishOnboarding = () => {
   }
 
   isOpen.value = false
-  restoreBodyScroll()
 }
 
 const nextStep = async () => {
@@ -112,46 +104,6 @@ const previousStep = async () => {
   headingRef.value?.focus()
 }
 
-const focusableElements = () => {
-  if (!dialogRef.value) return []
-
-  return [...dialogRef.value.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-  )]
-}
-
-const handleKeydown = (event: KeyboardEvent) => {
-  if (!isOpen.value) return
-
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    finishOnboarding()
-    return
-  }
-
-  if (event.key !== 'Tab') return
-
-  const focusable = focusableElements()
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  if (!first || !last) return
-
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault()
-    last.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first.focus()
-  }
-}
-
-watch(isOpen, async (open) => {
-  if (!open) return
-
-  await nextTick()
-  primaryButtonRef.value?.focus()
-})
-
 onMounted(() => {
   isStandalone.value = window.matchMedia('(display-mode: standalone)').matches
     || ('standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone))
@@ -167,138 +119,91 @@ onMounted(() => {
   }
 
   if (!Number.isFinite(savedVersion) || savedVersion < ONBOARDING_VERSION) {
-    previousBodyOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     isOpen.value = true
   }
-
-  document.addEventListener('keydown', handleKeydown)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', handleKeydown)
-  if (isOpen.value) restoreBodyScroll()
 })
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="isOpen" class="tutorial-backdrop">
-      <section
-        ref="dialogRef"
-        class="tutorial-sheet"
-        role="dialog"
-        aria-modal="true"
-        :aria-labelledby="`tutorial-title-${currentStep}`"
-        :aria-describedby="`tutorial-description-${currentStep}`"
-      >
-        <div class="tutorial-handle" aria-hidden="true" />
-
-        <header class="tutorial-header">
-          <div>
-            <p class="tutorial-kicker">使い方チュートリアル</p>
-            <p class="tutorial-step-count">{{ currentStep + 1 }} / {{ slides.length }}</p>
-          </div>
-          <button type="button" class="tutorial-close" @click="finishOnboarding">
-            閉じる
-          </button>
-        </header>
-
-        <ol class="tutorial-progress" aria-label="チュートリアルの進捗">
-          <li
-            v-for="(slide, index) in slides"
-            :key="slide.label"
-            class="tutorial-progress__item"
-            :class="{
-              'tutorial-progress__item--active': index === currentStep,
-              'tutorial-progress__item--done': index < currentStep,
-            }"
-            :aria-current="index === currentStep ? 'step' : undefined"
-          >
-            <span class="tutorial-progress__number">{{ index + 1 }}</span>
-            <span>{{ slide.label }}</span>
-          </li>
-        </ol>
-
-        <div class="tutorial-content">
-          <p class="tutorial-step-label">STEP {{ currentStep + 1 }}</p>
-          <h2
-            :id="`tutorial-title-${currentStep}`"
-            ref="headingRef"
-            class="tutorial-title"
-            tabindex="-1"
-          >
-            {{ currentSlide.title }}
-          </h2>
-          <p :id="`tutorial-description-${currentStep}`" class="tutorial-description">
-            {{ currentSlide.description }}
-          </p>
-
-          <ul class="tutorial-points">
-            <li v-for="point in currentSlide.points" :key="point">{{ point }}</li>
-          </ul>
+  <BottomSheet
+    :open="isOpen"
+    :labelledby="`tutorial-title-${currentStep}`"
+    :describedby="`tutorial-description-${currentStep}`"
+    size="half"
+    @close="finishOnboarding"
+  >
+    <template #header>
+      <header class="tutorial-header">
+        <div>
+          <p class="tutorial-kicker">使い方チュートリアル</p>
+          <p class="tutorial-step-count">{{ currentStep + 1 }} / {{ slides.length }}</p>
         </div>
+        <button type="button" class="tutorial-close" @click="finishOnboarding">
+          閉じる
+        </button>
+      </header>
 
-        <footer class="tutorial-footer">
-          <button
-            v-if="currentStep > 0"
-            type="button"
-            class="tutorial-secondary"
-            @click="previousStep"
-          >
-            戻る
-          </button>
-          <span v-else />
+      <ol class="tutorial-progress" aria-label="チュートリアルの進捗">
+        <li
+          v-for="(slide, index) in slides"
+          :key="slide.label"
+          class="tutorial-progress__item"
+          :class="{
+            'tutorial-progress__item--active': index === currentStep,
+            'tutorial-progress__item--done': index < currentStep,
+          }"
+          :aria-current="index === currentStep ? 'step' : undefined"
+        >
+          <span class="tutorial-progress__number">{{ index + 1 }}</span>
+          <span>{{ slide.label }}</span>
+        </li>
+      </ol>
+    </template>
 
-          <button
-            ref="primaryButtonRef"
-            type="button"
-            class="tutorial-primary"
-            @click="nextStep"
-          >
-            {{ isLastStep ? 'チュートリアルを完了' : '次へ' }}
-          </button>
-        </footer>
-      </section>
+    <div class="tutorial-content">
+      <p class="tutorial-step-label">STEP {{ currentStep + 1 }}</p>
+      <h2
+        :id="`tutorial-title-${currentStep}`"
+        ref="headingRef"
+        class="tutorial-title"
+        tabindex="-1"
+      >
+        {{ currentSlide.title }}
+      </h2>
+      <p :id="`tutorial-description-${currentStep}`" class="tutorial-description">
+        {{ currentSlide.description }}
+      </p>
+
+      <ul class="tutorial-points">
+        <li v-for="point in currentSlide.points" :key="point">{{ point }}</li>
+      </ul>
     </div>
-  </Teleport>
+
+    <template #footer>
+      <footer class="tutorial-footer">
+        <button
+          v-if="currentStep > 0"
+          type="button"
+          class="tutorial-secondary"
+          @click="previousStep"
+        >
+          戻る
+        </button>
+        <span v-else />
+
+        <button
+          type="button"
+          class="tutorial-primary"
+          @click="nextStep"
+        >
+          {{ isLastStep ? 'チュートリアルを完了' : '次へ' }}
+        </button>
+      </footer>
+    </template>
+  </BottomSheet>
 </template>
 
 <style scoped>
-.tutorial-backdrop {
-  position: fixed;
-  z-index: 2000;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: rgb(0 0 0 / 34%);
-}
-
-.tutorial-sheet {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  width: min(620px, 100%);
-  height: min(62dvh, 610px);
-  min-height: 430px;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-bottom: 0;
-  border-radius: 22px 22px 0 0;
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 -10px 36px rgb(0 0 0 / 18%);
-  animation: tutorial-sheet-in 180ms ease-out;
-}
-
-.tutorial-handle {
-  width: 38px;
-  height: 4px;
-  margin: 9px auto 2px;
-  border-radius: 999px;
-  background: var(--border-strong);
-}
-
 .tutorial-header {
   display: flex;
   align-items: center;
@@ -380,7 +285,6 @@ onBeforeUnmount(() => {
 }
 
 .tutorial-content {
-  overflow-y: auto;
   padding: 24px 22px 28px;
 }
 
@@ -436,8 +340,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 10px;
   padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border);
-  background: var(--surface);
 }
 
 .tutorial-primary,
@@ -469,31 +371,10 @@ onBeforeUnmount(() => {
   outline-offset: 3px;
 }
 
-@keyframes tutorial-sheet-in {
-  from {
-    transform: translateY(24px);
-    opacity: 0.92;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
 @media (max-width: 560px) {
-  .tutorial-sheet {
-    width: 100%;
-    height: 62dvh;
-    min-height: 420px;
-    border-right: 0;
-    border-left: 0;
-  }
-
-  .tutorial-header {
-    padding-inline: 16px;
-  }
-
-  .tutorial-progress {
+  .tutorial-header,
+  .tutorial-progress,
+  .tutorial-footer {
     padding-inline: 16px;
   }
 
@@ -509,23 +390,6 @@ onBeforeUnmount(() => {
 
   .tutorial-content {
     padding: 22px 18px 24px;
-  }
-
-  .tutorial-footer {
-    padding-inline: 16px;
-  }
-}
-
-@media (max-height: 680px) {
-  .tutorial-sheet {
-    height: 72dvh;
-    min-height: 390px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tutorial-sheet {
-    animation: none;
   }
 }
 </style>
