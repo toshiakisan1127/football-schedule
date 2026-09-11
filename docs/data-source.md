@@ -23,7 +23,11 @@ KickoffAPI v1 is deprecated and is scheduled to sunset on 1 January 2027, so a v
 
 ## Publishing rule
 
-The Lambda builds the complete document in memory first. `data/fixtures.json` is written to S3 only after every configured competition has been fetched, normalized, and filtered successfully. If any competition fails, the previous S3 object is left untouched.
+The Lambda builds the complete document in memory first. Before `data/fixtures.json` is written to S3, the application-owned document is validated as schema version `1`.
+
+Validation covers the document range and timestamps, configured competition IDs, fixture/team identifiers and names, duplicate fixture IDs, home/away consistency, supported statuses, non-negative scores, JST range membership, and fixture ordering. If fetching, normalization, or validation fails, S3 is not updated and the previous known-good object remains available to the frontend.
+
+The frontend therefore consumes the S3 document as the validated read model and does not need to understand KickoffAPI's provider-specific response shape.
 
 ## Score policy
 
@@ -35,4 +39,4 @@ The KickoffAPI key is stored as an SSM SecureString at `/football-schedule/kicko
 
 ## Tests
 
-`pytest` covers configured competition mappings, status mapping, observed/documented v1 fixture shapes, UTC conversion, JST date-window filtering, score preservation, season selection, v1 pagination, API error handling, and atomic multi-competition publishing.
+`pytest` covers configured competition mappings, status mapping, observed/documented v1 fixture shapes, UTC conversion, JST date-window filtering, score preservation, season selection, v1 pagination, API error handling, application document validation, and atomic multi-competition publishing.

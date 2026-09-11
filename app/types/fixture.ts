@@ -27,6 +27,7 @@ export interface Fixture {
 }
 
 export interface FixtureDocument {
+  schemaVersion: 1
   generatedAt: string
   range: {
     from: string

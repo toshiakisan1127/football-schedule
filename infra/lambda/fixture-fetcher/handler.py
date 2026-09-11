@@ -12,9 +12,10 @@ from zoneinfo import ZoneInfo
 import boto3
 import requests
 
+from validation import SCHEMA_VERSION, FixtureDocumentValidationError, validate_fixture_document
+
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
-
 API_BASE_URL = "https://api.kickoffapi.com"
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -60,17 +61,11 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
 
     LOGGER.info(
         "Starting fixture refresh: provider=v1 from=%s to=%s season=%d competitions=%d",
-        from_date,
-        to_date,
-        season,
-        len(COMPETITIONS),
+        from_date, to_date, season, len(COMPETITIONS),
     )
-
     api_key = _load_api_key(parameter_name)
     fixtures: list[dict[str, Any]] = []
 
-    # Build the entire document first. S3 is only updated after every competition
-    # has been fetched, normalized and filtered successfully.
     for competition in COMPETITIONS:
         raw_fixtures = _fetch_competition_fixtures(
             api_key=api_key,
@@ -84,69 +79,61 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
             fixture
             for item in raw_fixtures
             if _fixture_in_window(
-                fixture := _normalize_fixture(
-                    item,
-                    competition,
-                    team_ids=team_ids,
-                ),
+                fixture := _normalize_fixture(item, competition, team_ids=team_ids),
                 from_date=from_date,
                 to_date=to_date,
             )
         ]
         fixtures.extend(normalized)
-
         LOGGER.info(
             "Fetched competition: provider=v1 app_id=%s api_league_id=%s season=%d raw=%d kept=%d",
-            competition.app_id,
-            competition.api_league_id,
-            season,
-            len(raw_fixtures),
-            len(normalized),
+            competition.app_id, competition.api_league_id, season, len(raw_fixtures), len(normalized),
         )
 
     fixtures.sort(key=lambda fixture: (fixture["kickoff"], fixture["id"]))
-
     document = {
-        "generatedAt": datetime.now(timezone.utc)
-        .isoformat(timespec="seconds")
-        .replace("+00:00", "Z"),
-        "range": {
-            "from": from_date.isoformat(),
-            "to": to_date.isoformat(),
-        },
+        "schemaVersion": SCHEMA_VERSION,
+        "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "range": {"from": from_date.isoformat(), "to": to_date.isoformat()},
         "fixtures": fixtures,
     }
+    _validate_document(document)
 
     body = json.dumps(document, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     _publish_document(bucket_name=bucket_name, object_key=object_key, body=body)
-
     LOGGER.info(
-        "Published fixture document: bucket=%s key=%s fixtures=%d bytes=%d",
-        bucket_name,
-        object_key,
-        len(fixtures),
-        len(body),
+        "Published fixture document: bucket=%s key=%s fixtures=%d bytes=%d schema_version=%d",
+        bucket_name, object_key, len(fixtures), len(body), SCHEMA_VERSION,
     )
-
     return {
         "ok": True,
         "published": True,
         "fixtureCount": len(fixtures),
+        "schemaVersion": SCHEMA_VERSION,
         "range": document["range"],
     }
 
 
+def _validate_document(document: dict[str, Any]) -> None:
+    try:
+        validate_fixture_document(
+            document,
+            competition_ids={competition.app_id for competition in COMPETITIONS},
+        )
+    except FixtureDocumentValidationError as exc:
+        LOGGER.error("Fixture document validation failed: %s", exc)
+        raise FixtureDataError(f"Fixture document validation failed: {exc}") from exc
+    LOGGER.info(
+        "Validated fixture document: schema_version=%d fixtures=%d",
+        document["schemaVersion"], len(document["fixtures"]),
+    )
+
+
 def _fetch_competition_fixtures(
-    *,
-    api_key: str,
-    competition: Competition,
-    season: int,
-    from_date: date,
-    to_date: date,
+    *, api_key: str, competition: Competition, season: int, from_date: date, to_date: date
 ) -> list[dict[str, Any]]:
     fixtures: list[dict[str, Any]] = []
     page = 1
-
     while True:
         params: dict[str, Any] = {
             "league": competition.api_league_id,
@@ -156,19 +143,12 @@ def _fetch_competition_fixtures(
         }
         if page > 1:
             params["page"] = page
-
-        payload = _get_api_json(
-            "/api/v1/fixtures",
-            api_key=api_key,
-            params=params,
-        )
-
+        payload = _get_api_json("/api/v1/fixtures", api_key=api_key, params=params)
         response_items = payload.get("response")
         if not isinstance(response_items, list):
             raise FixtureDataError(
                 f"KickoffAPI v1 response is missing a response list for {competition.app_id}"
             )
-
         diagnostics = [_raw_fixture_diagnostic(item) for item in response_items]
         LOGGER.info(
             "Raw KickoffAPI v1 fixtures: app_id=%s page=%d items=%s",
@@ -177,11 +157,9 @@ def _fetch_competition_fixtures(
             json.dumps(diagnostics, ensure_ascii=False, separators=(",", ":")),
         )
         fixtures.extend(response_items)
-
         paging = payload.get("paging")
         if not isinstance(paging, dict):
             return fixtures
-
         try:
             current_page = int(paging.get("current", page))
             total_pages = int(paging.get("total", current_page))
@@ -189,7 +167,6 @@ def _fetch_competition_fixtures(
             raise FixtureDataError(
                 f"Invalid KickoffAPI v1 paging data for {competition.app_id}"
             ) from exc
-
         if current_page >= total_pages:
             return fixtures
         page = current_page + 1
@@ -198,7 +175,6 @@ def _fetch_competition_fixtures(
 def _raw_fixture_diagnostic(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {"type": type(raw).__name__}
-
     fixture = raw.get("fixture")
     if isinstance(fixture, dict):
         fixture_id = fixture.get("id")
@@ -208,9 +184,7 @@ def _raw_fixture_diagnostic(raw: Any) -> dict[str, Any]:
         fixture_id = raw.get("id")
         kickoff = raw.get("date")
         status = raw.get("status") or raw.get("statusShort")
-
     home, away = _raw_teams(raw)
-
     return {
         "id": fixture_id,
         "date": kickoff,
@@ -233,12 +207,7 @@ def _raw_teams(raw: dict[str, Any]) -> tuple[Any, Any]:
     return raw.get("homeTeam") or raw.get("home"), raw.get("awayTeam") or raw.get("away")
 
 
-def _get_api_json(
-    path: str,
-    *,
-    api_key: str,
-    params: dict[str, Any],
-) -> dict[str, Any]:
+def _get_api_json(path: str, *, api_key: str, params: dict[str, Any]) -> dict[str, Any]:
     response = _http.get(
         f"{API_BASE_URL}{path}",
         headers={"x-api-key": api_key},
@@ -246,15 +215,12 @@ def _get_api_json(
         timeout=(3.05, 30),
     )
     response.raise_for_status()
-
     try:
         payload = response.json()
     except requests.JSONDecodeError as exc:
         raise FixtureDataError("KickoffAPI returned invalid JSON") from exc
-
     if not isinstance(payload, dict):
         raise FixtureDataError("KickoffAPI returned a non-object JSON payload")
-
     errors = payload.get("errors") or payload.get("error")
     if errors:
         raise FixtureDataError(f"KickoffAPI returned errors: {errors!r}")
@@ -276,28 +242,17 @@ def _collect_team_ids(raw_fixtures: list[dict[str, Any]]) -> dict[str, str]:
     return team_ids
 
 
-def _normalize_team_id(
-    raw_id: Any,
-    team_name: str,
-    team_ids: dict[str, str] | None,
-) -> str:
+def _normalize_team_id(raw_id: Any, team_name: str, team_ids: dict[str, str] | None) -> str:
     if raw_id not in (None, ""):
         return str(raw_id)
-
-    if team_ids is not None:
-        provider_id = team_ids.get(team_name)
-        if provider_id:
-            return provider_id
-
+    if team_ids is not None and team_ids.get(team_name):
+        return team_ids[team_name]
     digest = hashlib.sha256(team_name.encode("utf-8")).hexdigest()[:16]
     return f"team-name-{digest}"
 
 
 def _normalize_fixture(
-    raw: dict[str, Any],
-    competition: Competition,
-    *,
-    team_ids: dict[str, str] | None = None,
+    raw: dict[str, Any], competition: Competition, *, team_ids: dict[str, str] | None = None
 ) -> dict[str, Any]:
     try:
         fixture = raw.get("fixture")
@@ -309,23 +264,20 @@ def _normalize_fixture(
             fixture_id = raw["id"]
             kickoff = raw["date"]
             raw_status = raw.get("status") or raw.get("statusShort")
-
         home, away = _raw_teams(raw)
         if not isinstance(home, dict) or not isinstance(away, dict):
             raise KeyError("home/away teams")
-
         home_name = home["name"]
         away_name = away["name"]
         if not isinstance(home_name, str) or not isinstance(away_name, str):
             raise TypeError("team name")
-
         home_id = _normalize_team_id(home.get("id"), home_name, team_ids)
         away_id = _normalize_team_id(away.get("id"), away_name, team_ids)
-
-        if isinstance(raw_status, dict):
-            status_value = raw_status.get("short") or raw_status.get("long")
-        else:
-            status_value = raw_status
+        status_value = (
+            raw_status.get("short") or raw_status.get("long")
+            if isinstance(raw_status, dict)
+            else raw_status
+        )
     except (KeyError, TypeError) as exc:
         raise FixtureDataError(
             f"Malformed fixture payload for {competition.app_id}: {raw!r}"
@@ -334,26 +286,22 @@ def _normalize_fixture(
     if not isinstance(kickoff, str):
         raise FixtureDataError(f"Invalid kickoff for fixture {fixture_id}: {kickoff!r}")
     if status_value is not None and not isinstance(status_value, str):
-        raise FixtureDataError(
-            f"Invalid status for fixture {fixture_id}: {status_value!r}"
-        )
+        raise FixtureDataError(f"Invalid status for fixture {fixture_id}: {status_value!r}")
 
     goals = raw.get("goals")
     if isinstance(goals, dict):
-        home_goals = goals.get("home")
-        away_goals = goals.get("away")
+        home_goals, away_goals = goals.get("home"), goals.get("away")
     else:
-        home_goals = raw.get("homeScore")
-        away_goals = raw.get("awayScore")
-        if home_goals is None and isinstance(home, dict):
+        home_goals, away_goals = raw.get("homeScore"), raw.get("awayScore")
+        if home_goals is None:
             home_goals = home.get("goals")
-        if away_goals is None and isinstance(away, dict):
+        if away_goals is None:
             away_goals = away.get("goals")
-
-    score = None
-    if isinstance(home_goals, int) and isinstance(away_goals, int):
-        score = {"home": home_goals, "away": away_goals}
-
+    score = (
+        {"home": home_goals, "away": away_goals}
+        if isinstance(home_goals, int) and isinstance(away_goals, int)
+        else None
+    )
     return {
         "id": str(fixture_id),
         "competition": {
@@ -361,14 +309,8 @@ def _normalize_fixture(
             "name": competition.name,
             "country": competition.country,
         },
-        "home": {
-            "id": home_id,
-            "name": home_name,
-        },
-        "away": {
-            "id": away_id,
-            "name": away_name,
-        },
+        "home": {"id": home_id, "name": home_name},
+        "away": {"id": away_id, "name": away_name},
         "kickoff": _utc_iso(kickoff),
         "status": _normalize_status(status_value),
         "score": score,
@@ -378,7 +320,6 @@ def _normalize_fixture(
 def _normalize_status(status_value: str | None) -> str:
     if status_value is None:
         return "scheduled"
-
     normalized = status_value.strip().lower()
     if normalized in SCHEDULED_STATUSES:
         return "scheduled"
@@ -393,16 +334,10 @@ def _normalize_status(status_value: str | None) -> str:
     raise FixtureDataError(f"Unknown KickoffAPI fixture status: {status_value}")
 
 
-def _fixture_in_window(
-    fixture: dict[str, Any],
-    *,
-    from_date: date,
-    to_date: date,
-) -> bool:
+def _fixture_in_window(fixture: dict[str, Any], *, from_date: date, to_date: date) -> bool:
     kickoff = fixture.get("kickoff")
     if not isinstance(kickoff, str):
         raise FixtureDataError(f"Normalized fixture has invalid kickoff: {kickoff!r}")
-
     fixture_date_jst = _parse_datetime(kickoff).astimezone(JST).date()
     return from_date <= fixture_date_jst <= to_date
 
@@ -412,19 +347,14 @@ def _parse_datetime(value: str) -> datetime:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise FixtureDataError(f"Invalid fixture datetime: {value!r}") from exc
-
     if parsed.tzinfo is None:
         raise FixtureDataError(f"Fixture datetime has no timezone: {value!r}")
-
     return parsed
 
 
 def _utc_iso(value: str) -> str:
-    return (
-        _parse_datetime(value)
-        .astimezone(timezone.utc)
-        .isoformat(timespec="seconds")
-        .replace("+00:00", "Z")
+    return _parse_datetime(value).astimezone(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
     )
 
 
