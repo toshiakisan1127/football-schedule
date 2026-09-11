@@ -391,7 +391,7 @@ def _normalized_team(
     raw_team: dict[str, Any], *, team_name: str, team_id: str, competition_id: str
 ) -> dict[str, str]:
     team = {"id": team_id, "name": team_name}
-    logo = get_static_team_logo(competition_id, team_name) if competition_id == "bundesliga" else None
+    logo = get_static_team_logo(competition_id, team_name)
     if logo is None:
         logo = _normalize_team_logo(raw_team)
     if logo is not None:
