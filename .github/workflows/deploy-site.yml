@@ -9,7 +9,6 @@ on:
       - 'public/**'
       - 'nuxt.config.ts'
       - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
@@ -38,10 +37,10 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: package.json
 
       - name: Install frontend dependencies
-        run: npm ci --workspaces=false --prefer-offline --no-audit --no-fund
+        run: npm install --workspaces=false --prefer-offline --no-audit --no-fund
 
       - name: Generate static site
         env:
