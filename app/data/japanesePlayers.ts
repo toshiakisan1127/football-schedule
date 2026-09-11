@@ -28,6 +28,13 @@ const JAPANESE_TEAMS: readonly JapaneseTeam[] = [
   { aliases: ['SC Freiburg', 'Sport-Club Freiburg'], players: ['鈴木唯人', '山本理仁', '後藤啓介'] },
   { aliases: ['1899 Hoffenheim', 'TSG Hoffenheim'], players: ['町田浩樹'] },
   { aliases: ['FC Schalke 04', 'Schalke 04'], players: ['田中聡'] },
+  { aliases: ['AS Monaco', 'Monaco'], players: ['南野拓実'] },
+  {
+    aliases: ['LE Havre', 'Le Havre', 'Le Havre AC', 'Havre AC'],
+    players: ['瀬古歩夢', '中村草太', '水多海斗'],
+  },
+  { aliases: ['Lille', 'LOSC', 'LOSC Lille'], players: ['上田綺世'] },
+  { aliases: ['Lyon', 'Olympique Lyonnais', 'Olympique Lyon'], players: ['中村敬斗'] },
 ]
 
 const normalizeTeamName = (name: string) =>
