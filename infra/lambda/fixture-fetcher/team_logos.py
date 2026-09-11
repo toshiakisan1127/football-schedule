@@ -45,6 +45,26 @@ TEAM_LOGOS: dict[str, dict[str, str]] = {
         "Valencia CF": "https://images.kickoffapi.com/images/logos/532.png?format=webp",
         "Villarreal CF": "https://images.kickoffapi.com/images/logos/533.png?format=webp",
     },
+    "bundesliga": {
+        "1. FC Köln": "https://images.kickoffapi.com/images/logos/192.png?format=webp",
+        "1899 Hoffenheim": "https://images.kickoffapi.com/images/logos/167.png?format=webp",
+        "Bayer Leverkusen": "https://images.kickoffapi.com/images/logos/168.png?format=webp",
+        "Bayern München": "https://images.kickoffapi.com/images/logos/157.png?format=webp",
+        "Borussia Dortmund": "https://images.kickoffapi.com/images/logos/165.png?format=webp",
+        "Borussia Mönchengladbach": "https://images.kickoffapi.com/images/logos/163.png?format=webp",
+        "Eintracht Frankfurt": "https://images.kickoffapi.com/images/logos/169.png?format=webp",
+        "FC Augsburg": "https://images.kickoffapi.com/images/logos/170.png?format=webp",
+        "FC Schalke 04": "https://images.kickoffapi.com/images/logos/174.png?format=webp",
+        "FSV Mainz 05": "https://images.kickoffapi.com/images/logos/164.png?format=webp",
+        "Hamburger SV": "https://images.kickoffapi.com/images/logos/175.png?format=webp",
+        "RB Leipzig": "https://images.kickoffapi.com/images/logos/173.png?format=webp",
+        "SC Freiburg": "https://images.kickoffapi.com/images/logos/160.png?format=webp",
+        "SC Paderborn 07": "https://images.kickoffapi.com/images/logos/185.png?format=webp",
+        "SV Elversberg": "https://images.kickoffapi.com/images/logos/1660.png?format=webp",
+        "Union Berlin": "https://images.kickoffapi.com/images/logos/182.png?format=webp",
+        "VfB Stuttgart": "https://images.kickoffapi.com/images/logos/172.png?format=webp",
+        "Werder Bremen": "https://images.kickoffapi.com/images/logos/162.png?format=webp",
+    },
 }
 
 
