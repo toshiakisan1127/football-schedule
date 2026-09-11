@@ -4,6 +4,12 @@ import type { Fixture, FixtureDocument } from './types/fixture'
 type DateFilter = 'all' | 'today' | 'tomorrow' | 'weekend'
 type Theme = 'light' | 'dark'
 
+type TeamFilter = {
+  id: string
+  name: string
+  competitions: string[]
+}
+
 const FIXTURE_TIME_ZONE = 'Asia/Tokyo'
 
 const runtimeConfig = useRuntimeConfig()
@@ -21,7 +27,11 @@ const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
 const selectedFilter = ref<DateFilter>('all')
 const selectedCompetitions = ref<Set<string>>(new Set())
 const draftCompetitions = ref<Set<string>>(new Set())
+const selectedTeams = ref<Set<string>>(new Set())
+const draftTeams = ref<Set<string>>(new Set())
+const teamSearch = ref('')
 const isLeagueSettingsOpen = ref(false)
+const isTeamSettingsOpen = ref(false)
 const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
 const showResults = ref(false)
@@ -47,18 +57,67 @@ const competitionFilters = computed(() => {
   )
 })
 
+const teamFilters = computed<TeamFilter[]>(() => {
+  const teams = new Map<string, { id: string; name: string; competitions: Set<string> }>()
+
+  for (const fixture of data.value?.fixtures ?? []) {
+    for (const team of [fixture.home, fixture.away]) {
+      const current = teams.get(team.id) ?? {
+        id: team.id,
+        name: team.name,
+        competitions: new Set<string>(),
+      }
+
+      current.competitions.add(fixture.competition.name)
+      teams.set(team.id, current)
+    }
+  }
+
+  return [...teams.values()]
+    .map((team) => ({
+      id: team.id,
+      name: team.name,
+      competitions: [...team.competitions].sort((a, b) => a.localeCompare(b)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const filteredTeamOptions = computed(() => {
+  const query = teamSearch.value.trim().toLocaleLowerCase()
+  if (!query) return teamFilters.value
+
+  return teamFilters.value.filter((team) =>
+    team.name.toLocaleLowerCase().includes(query)
+    || team.competitions.some((competition) => competition.toLocaleLowerCase().includes(query)),
+  )
+})
+
 const isAllCompetitionsSelected = computed(() => selectedCompetitions.value.size === 0)
 const isAllDraftCompetitionsSelected = computed(() => draftCompetitions.value.size === 0)
+const isAllTeamsSelected = computed(() => selectedTeams.value.size === 0)
+const isAllDraftTeamsSelected = computed(() => draftTeams.value.size === 0)
 
 const selectedCompetitionList = computed(() => {
   if (isAllCompetitionsSelected.value) return []
   return competitionFilters.value.filter((competition) => selectedCompetitions.value.has(competition.id))
 })
 
+const selectedTeamList = computed(() => {
+  if (isAllTeamsSelected.value) return []
+  return teamFilters.value.filter((team) => selectedTeams.value.has(team.id))
+})
+
 const persistCompetitionSelection = () => {
   localStorage.setItem(
     'football-schedule-competitions',
     JSON.stringify([...selectedCompetitions.value]),
+  )
+}
+
+const persistTeamSelection = () => {
+  localStorage.setItem(
+    'football-schedule-teams',
+    JSON.stringify([...selectedTeams.value]),
   )
 }
 
@@ -93,6 +152,41 @@ const saveLeagueSettings = () => {
   selectedCompetitions.value = new Set(draftCompetitions.value)
   persistCompetitionSelection()
   closeLeagueSettings()
+}
+
+const openTeamSettings = () => {
+  draftTeams.value = new Set(selectedTeams.value)
+  teamSearch.value = ''
+  isTeamSettingsOpen.value = true
+}
+
+const closeTeamSettings = () => {
+  isTeamSettingsOpen.value = false
+  teamSearch.value = ''
+}
+
+const selectAllDraftTeams = () => {
+  draftTeams.value = new Set()
+}
+
+const toggleDraftTeam = (teamId: string) => {
+  const next = new Set(draftTeams.value)
+
+  if (next.size === 0) {
+    next.add(teamId)
+  } else if (next.has(teamId)) {
+    next.delete(teamId)
+  } else {
+    next.add(teamId)
+  }
+
+  draftTeams.value = next.size === 0 ? new Set() : next
+}
+
+const saveTeamSettings = () => {
+  selectedTeams.value = new Set(draftTeams.value)
+  persistTeamSelection()
+  closeTeamSettings()
 }
 
 const localDateKeyFromDate = (date: Date) => {
@@ -179,6 +273,12 @@ const filteredFixtures = computed(() => {
     fixtures = fixtures.filter((fixture) => selectedCompetitions.value.has(fixture.competition.id))
   }
 
+  if (selectedTeams.value.size > 0) {
+    fixtures = fixtures.filter((fixture) =>
+      selectedTeams.value.has(fixture.home.id) || selectedTeams.value.has(fixture.away.id),
+    )
+  }
+
   if (!targetDateKeys.value) return fixtures
 
   return fixtures.filter((fixture) => targetDateKeys.value?.has(localDateKey(fixture.kickoff)))
@@ -220,12 +320,13 @@ const generatedAtLabel = computed(() => {
 })
 
 const emptyMessage = computed(() => {
-  const competitionPrefix = isAllCompetitionsSelected.value ? '' : '選択したリーグの'
+  const hasDisplayFilter = !isAllCompetitionsSelected.value || !isAllTeamsSelected.value
+  const prefix = hasDisplayFilter ? '条件に合う' : ''
 
-  if (selectedFilter.value === 'all') return `${competitionPrefix}表示できる試合がありません。`
-  if (selectedFilter.value === 'today') return `${competitionPrefix}今日の試合はありません。`
-  if (selectedFilter.value === 'tomorrow') return `${competitionPrefix}明日の試合はありません。`
-  return `${competitionPrefix}今週末の試合はありません。`
+  if (selectedFilter.value === 'all') return `${prefix}表示できる試合がありません。`
+  if (selectedFilter.value === 'today') return `${prefix}今日の試合はありません。`
+  if (selectedFilter.value === 'tomorrow') return `${prefix}明日の試合はありません。`
+  return `${prefix}今週末の試合はありません。`
 })
 
 const applyTheme = (nextTheme: Theme) => {
@@ -245,13 +346,14 @@ const toggleResults = () => {
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && isLeagueSettingsOpen.value) {
-    closeLeagueSettings()
-  }
+  if (event.key !== 'Escape') return
+
+  if (isLeagueSettingsOpen.value) closeLeagueSettings()
+  if (isTeamSettingsOpen.value) closeTeamSettings()
 }
 
-watch(isLeagueSettingsOpen, (isOpen) => {
-  document.body.style.overflow = isOpen ? 'hidden' : ''
+watch([isLeagueSettingsOpen, isTeamSettingsOpen], ([leagueOpen, teamOpen]) => {
+  document.body.style.overflow = leagueOpen || teamOpen ? 'hidden' : ''
 })
 
 onMounted(() => {
@@ -276,6 +378,18 @@ onMounted(() => {
       }
     } catch {
       localStorage.removeItem('football-schedule-competitions')
+    }
+  }
+
+  const savedTeams = localStorage.getItem('football-schedule-teams')
+  if (savedTeams) {
+    try {
+      const parsed = JSON.parse(savedTeams)
+      if (Array.isArray(parsed) && parsed.every((id) => typeof id === 'string')) {
+        selectedTeams.value = new Set(parsed)
+      }
+    } catch {
+      localStorage.removeItem('football-schedule-teams')
     }
   }
 
@@ -336,26 +450,49 @@ onUnmounted(() => {
       </button>
     </nav>
 
-    <section class="league-summary" aria-label="表示リーグ設定">
-      <div class="league-summary__header">
-        <span class="league-summary__label">表示リーグ</span>
-        <button type="button" class="league-edit-button" @click="openLeagueSettings">
-          編集
-        </button>
-      </div>
+    <div class="filter-summaries">
+      <section class="league-summary" aria-label="表示リーグ設定">
+        <div class="league-summary__header">
+          <span class="league-summary__label">表示リーグ</span>
+          <button type="button" class="league-edit-button" @click="openLeagueSettings">
+            編集
+          </button>
+        </div>
 
-      <div class="selected-leagues">
-        <span v-if="isAllCompetitionsSelected" class="league-pill">全リーグ</span>
-        <span
-          v-for="competition in selectedCompetitionList"
-          v-else
-          :key="competition.id"
-          class="league-pill"
-        >
-          {{ competition.name }}
-        </span>
-      </div>
-    </section>
+        <div class="selected-leagues">
+          <span v-if="isAllCompetitionsSelected" class="league-pill">全リーグ</span>
+          <span
+            v-for="competition in selectedCompetitionList"
+            v-else
+            :key="competition.id"
+            class="league-pill"
+          >
+            {{ competition.name }}
+          </span>
+        </div>
+      </section>
+
+      <section class="league-summary" aria-label="お気に入りチーム設定">
+        <div class="league-summary__header">
+          <span class="league-summary__label">お気に入りチーム</span>
+          <button type="button" class="league-edit-button" @click="openTeamSettings">
+            編集
+          </button>
+        </div>
+
+        <div class="selected-leagues">
+          <span v-if="isAllTeamsSelected" class="league-pill">未設定（全チーム表示）</span>
+          <span
+            v-for="team in selectedTeamList"
+            v-else
+            :key="team.id"
+            class="league-pill"
+          >
+            {{ team.name }}
+          </span>
+        </div>
+      </section>
+    </div>
 
     <p v-if="status === 'pending'" class="state-message">日程を読み込んでいます…</p>
     <p v-else-if="error" class="state-message state-message--error">
@@ -472,6 +609,93 @@ onUnmounted(() => {
               キャンセル
             </button>
             <button type="button" class="modal-primary-button" @click="saveLeagueSettings">
+              完了
+            </button>
+          </footer>
+        </section>
+      </div>
+
+      <div
+        v-if="isTeamSettingsOpen"
+        class="modal-backdrop"
+        @click.self="closeTeamSettings"
+      >
+        <section
+          class="league-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="team-modal-title"
+        >
+          <header class="league-modal__header">
+            <div>
+              <p class="league-modal__eyebrow">表示設定</p>
+              <h2 id="team-modal-title">お気に入りチーム</h2>
+            </div>
+            <button
+              type="button"
+              class="modal-close-button"
+              aria-label="閉じる"
+              @click="closeTeamSettings"
+            >
+              ×
+            </button>
+          </header>
+
+          <div class="team-search-wrap">
+            <input
+              v-model="teamSearch"
+              class="team-search"
+              type="search"
+              placeholder="チーム名・リーグ名で検索"
+              aria-label="チームを検索"
+            >
+          </div>
+
+          <div class="league-options league-options--teams">
+            <button
+              type="button"
+              class="league-option"
+              :class="{ 'league-option--selected': isAllDraftTeamsSelected }"
+              :aria-pressed="isAllDraftTeamsSelected"
+              @click="selectAllDraftTeams"
+            >
+              <span>
+                <strong>チーム指定なし</strong>
+                <small>リーグ内の全試合を表示</small>
+              </span>
+              <span class="league-option__check" aria-hidden="true">
+                {{ isAllDraftTeamsSelected ? '✓' : '' }}
+              </span>
+            </button>
+
+            <button
+              v-for="team in filteredTeamOptions"
+              :key="team.id"
+              type="button"
+              class="league-option"
+              :class="{ 'league-option--selected': draftTeams.has(team.id) }"
+              :aria-pressed="draftTeams.has(team.id)"
+              @click="toggleDraftTeam(team.id)"
+            >
+              <span>
+                <strong>{{ team.name }}</strong>
+                <small>{{ team.competitions.join(' · ') }}</small>
+              </span>
+              <span class="league-option__check" aria-hidden="true">
+                {{ draftTeams.has(team.id) ? '✓' : '' }}
+              </span>
+            </button>
+
+            <p v-if="filteredTeamOptions.length === 0" class="team-search-empty">
+              該当するチームがありません。
+            </p>
+          </div>
+
+          <footer class="league-modal__footer">
+            <button type="button" class="modal-secondary-button" @click="closeTeamSettings">
+              キャンセル
+            </button>
+            <button type="button" class="modal-primary-button" @click="saveTeamSettings">
               完了
             </button>
           </footer>
