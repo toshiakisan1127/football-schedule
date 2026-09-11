@@ -100,7 +100,13 @@ def test_scheduler_style_event_refreshes_all_competitions(
     setup_env(monkeypatch)
     fetched: list[str] = []
     published: list[dict] = []
-    fixture_ids = {"epl": 1001, "laliga": 2001, "bundesliga": 3001, "ligue1": 4001}
+    fixture_ids = {
+        "epl": 1001,
+        "laliga": 2001,
+        "bundesliga": 3001,
+        "ligue1": 4001,
+        "seriea": 5001,
+    }
 
     def fake_fetch(**kwargs) -> list[dict]:
         competition = kwargs["competition"]
@@ -112,14 +118,15 @@ def test_scheduler_style_event_refreshes_all_competitions(
 
     result = split_handler.lambda_handler({"source": "aws.scheduler"}, None)
 
-    assert fetched == ["epl", "laliga", "bundesliga", "ligue1"]
+    assert fetched == ["epl", "laliga", "bundesliga", "ligue1", "seriea"]
     assert [item["object_key"] for item in published] == [
         "data/fixtures/premier-league.json",
         "data/fixtures/laliga.json",
         "data/fixtures/bundesliga.json",
         "data/fixtures/ligue1.json",
+        "data/fixtures/serie-a.json",
     ]
-    assert result["fixtureCount"] == 4
+    assert result["fixtureCount"] == 5
 
 
 def test_one_competition_failure_does_not_block_other_competition_publishes(
@@ -127,7 +134,7 @@ def test_one_competition_failure_does_not_block_other_competition_publishes(
 ) -> None:
     setup_env(monkeypatch)
     published: list[dict] = []
-    fixture_ids = {"epl": 1001, "bundesliga": 3001, "ligue1": 4001}
+    fixture_ids = {"epl": 1001, "bundesliga": 3001, "ligue1": 4001, "seriea": 5001}
 
     def fake_fetch(**kwargs) -> list[dict]:
         competition = kwargs["competition"]
@@ -145,4 +152,5 @@ def test_one_competition_failure_does_not_block_other_competition_publishes(
         "data/fixtures/premier-league.json",
         "data/fixtures/bundesliga.json",
         "data/fixtures/ligue1.json",
+        "data/fixtures/serie-a.json",
     ]
