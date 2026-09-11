@@ -65,6 +65,7 @@ TEAM_LOGOS: dict[str, dict[str, str]] = {
         "VfB Stuttgart": "https://images.kickoffapi.com/images/logos/172.png?format=webp",
         "Werder Bremen": "https://images.kickoffapi.com/images/logos/162.png?format=webp",
     },
+    "ligue1": {},
 }
 
 
