@@ -55,11 +55,12 @@ export class DataStack extends Stack {
     fixtureFetcher.grantInvoke(schedulerRole)
 
     new scheduler.CfnSchedule(this, 'FixtureRefreshSchedule', {
-      description: 'Refresh football fixture data every six hours.',
+      description: 'Refresh football fixture data daily at 05:00 JST.',
       flexibleTimeWindow: {
         mode: 'OFF',
       },
-      scheduleExpression: 'rate(6 hours)',
+      scheduleExpression: 'cron(0 5 * * ? *)',
+      scheduleExpressionTimezone: 'Asia/Tokyo',
       state: 'ENABLED',
       target: {
         arn: fixtureFetcher.functionArn,

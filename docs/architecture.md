@@ -40,7 +40,7 @@ UEFA Champions Leagueは次の追加対象。J1はKickoffAPIで2026シーズン�
                          +----------+-----------+
                                     |
 EventBridge Scheduler               v
-(rate 6 hours / ENABLED) --> Fixture Fetcher Lambda
+(daily 05:00 JST / ENABLED) --> Fixture Fetcher Lambda
                                     |
                      +--------------+--------------+
                      |                             |
@@ -170,7 +170,7 @@ data/
 
 ## Refresh strategy
 
-- EventBridge Schedulerから6時間おきにLambdaを実行する
+- EventBridge Schedulerから毎日05:00 JSTにLambdaを実行する
 - Schedulerは `ENABLED`
 - Lambda runtimeはPython 3.13
 - Lambda timeoutは5分

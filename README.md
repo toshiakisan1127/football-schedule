@@ -57,7 +57,7 @@ UEFA Champions Leagueは次の追加対象です。J1はKickoffAPIの2026シー�
                          +----------+-----------+
                                     |
 EventBridge Scheduler               v
-(rate 6 hours / ENABLED) --> Fixture Fetcher Lambda
+(daily 05:00 JST / ENABLED) --> Fixture Fetcher Lambda
                                     |
                      +--------------+--------------+
                      |                             |
