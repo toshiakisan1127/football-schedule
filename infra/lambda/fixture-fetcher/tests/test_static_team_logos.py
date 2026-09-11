@@ -21,10 +21,11 @@ def _fixture(*, fixture_id: str, kickoff: str, time: str | None) -> dict:
     }
 
 
-def test_static_logo_snapshot_covers_both_leagues() -> None:
-    assert set(TEAM_LOGOS) == {"epl", "laliga"}
+def test_static_logo_snapshot_covers_supported_leagues() -> None:
+    assert set(TEAM_LOGOS) == {"epl", "laliga", "bundesliga"}
     assert len(TEAM_LOGOS["epl"]) == 20
     assert len(TEAM_LOGOS["laliga"]) == 20
+    assert len(TEAM_LOGOS["bundesliga"]) == 18
 
 
 def test_static_logo_snapshot_has_expected_known_teams() -> None:
@@ -36,6 +37,9 @@ def test_static_logo_snapshot_has_expected_known_teams() -> None:
     )
     assert get_static_team_logo("laliga", "Deportivo Alavés") == (
         "https://images.kickoffapi.com/images/logos/542.png?format=webp"
+    )
+    assert get_static_team_logo("bundesliga", "Bayern München") == (
+        "https://images.kickoffapi.com/images/logos/157.png?format=webp"
     )
 
 
