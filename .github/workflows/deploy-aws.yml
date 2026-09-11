@@ -229,13 +229,26 @@ jobs:
             --exclusively \
             --require-approval never
 
-  deploy:
+  approval:
     needs: plan
     if: >-
       needs.plan.outputs.has_changes == 'true' &&
       needs.plan.outputs.lambda_only != 'true'
     runs-on: ubuntu-latest
     environment: production
+
+    steps:
+      - name: Record approval
+        run: echo 'Production deployment approved.'
+
+  deploy:
+    needs:
+      - plan
+      - approval
+    if: >-
+      needs.plan.outputs.has_changes == 'true' &&
+      needs.plan.outputs.lambda_only != 'true'
+    runs-on: ubuntu-latest
     concurrency:
       group: football-schedule-cdk-deploy
       cancel-in-progress: false
