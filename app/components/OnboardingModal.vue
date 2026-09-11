@@ -76,6 +76,13 @@ const slides = computed<OnboardingSlide[]>(() => {
 const currentSlide = computed(() => slides.value[currentStep.value] ?? slides.value[0]!)
 const isLastStep = computed(() => currentStep.value === slides.value.length - 1)
 
+const openTutorial = async () => {
+  currentStep.value = 0
+  isOpen.value = true
+  await nextTick()
+  headingRef.value?.focus()
+}
+
 const finishOnboarding = () => {
   try {
     localStorage.setItem(STORAGE_KEY, String(ONBOARDING_VERSION))
@@ -125,6 +132,18 @@ onMounted(() => {
 </script>
 
 <template>
+  <Teleport to=".header-actions">
+    <button
+      type="button"
+      class="tutorial-launcher"
+      aria-label="使い方チュートリアルを開く"
+      title="使い方チュートリアル"
+      @click="openTutorial"
+    >
+      🔰
+    </button>
+  </Teleport>
+
   <BottomSheet
     :open="isOpen"
     :labelledby="`tutorial-title-${currentStep}`"
@@ -204,6 +223,26 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.tutorial-launcher {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tutorial-launcher:hover {
+  background: var(--surface-muted);
+}
+
 .tutorial-header {
   display: flex;
   align-items: center;
@@ -364,6 +403,7 @@ onMounted(() => {
   color: var(--text);
 }
 
+.tutorial-launcher:focus-visible,
 .tutorial-primary:focus-visible,
 .tutorial-secondary:focus-visible,
 .tutorial-close:focus-visible {
@@ -372,6 +412,12 @@ onMounted(() => {
 }
 
 @media (max-width: 560px) {
+  .tutorial-launcher {
+    width: 28px;
+    height: 28px;
+    font-size: 0.82rem;
+  }
+
   .tutorial-header,
   .tutorial-progress,
   .tutorial-footer {
