@@ -1,0 +1,74 @@
+name: Apply Japanese team markers
+
+on:
+  push:
+    branches:
+      - feature/japanese-team-markers
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update team labels
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/app.vue')
+          text = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'Expected one occurrence, found {count}: {old!r}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "import type { Fixture, FixtureDocument } from './types/fixture'\n",
+              "import type { Fixture, FixtureDocument } from './types/fixture'\nimport { japanesePlayersForTeam } from './data/japanesePlayers'\n",
+          )
+
+          replace_once(
+              "const showResults = ref(false)\n",
+              "const showResults = ref(false)\n\n"
+              "const teamDisplayName = (name: string) =>\n"
+              "  japanesePlayersForTeam(name).length > 0 ? `${name} 🇯🇵` : name\n\n"
+              "const japanesePlayersTitle = (name: string) => {\n"
+              "  const players = japanesePlayersForTeam(name)\n"
+              "  return players.length > 0 ? `日本人選手: ${players.join('、')}` : undefined\n"
+              "}\n",
+          )
+
+          if text.count('{{ team.name }}') != 2:
+              raise RuntimeError(f"Expected two team.name labels, found {text.count('{{ team.name }}')}")
+          text = text.replace('{{ team.name }}', '{{ teamDisplayName(team.name) }}')
+
+          replace_once(
+              '<span>{{ fixture.home.name }}</span>',
+              '<span :title="japanesePlayersTitle(fixture.home.name)">{{ teamDisplayName(fixture.home.name) }}</span>',
+          )
+          replace_once(
+              '<span>{{ fixture.away.name }}</span>',
+              '<span :title="japanesePlayersTitle(fixture.away.name)">{{ teamDisplayName(fixture.away.name) }}</span>',
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/apply-japanese-team-markers.yml
+
+      - name: Commit changes
+        run: |
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/app.vue .github/workflows/apply-japanese-team-markers.yml
+          git commit -m "Show Japan markers for teams with Japanese players"
+          git push
