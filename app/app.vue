@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Fixture, FixtureDocument } from './types/fixture'
+import { japanesePlayersForTeam } from './data/japanesePlayers'
 
 type DateFilter = 'all' | 'today' | 'tomorrow' | 'weekend'
 type Theme = 'light' | 'dark'
@@ -35,6 +36,14 @@ const isTeamSettingsOpen = ref(false)
 const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
 const showResults = ref(false)
+
+const teamDisplayName = (name: string) =>
+  japanesePlayersForTeam(name).length > 0 ? `${name} 🇯🇵` : name
+
+const japanesePlayersTitle = (name: string) => {
+  const players = japanesePlayersForTeam(name)
+  return players.length > 0 ? `日本人選手: ${players.join('、')}` : undefined
+}
 
 const dateFilters: { value: DateFilter; label: string }[] = [
   { value: 'all', label: '全日程' },
@@ -488,7 +497,7 @@ onUnmounted(() => {
             :key="team.id"
             class="league-pill"
           >
-            {{ team.name }}
+            {{ teamDisplayName(team.name) }}
           </span>
         </div>
       </section>
@@ -514,9 +523,9 @@ onUnmounted(() => {
                 {{ fixture.competition.country }} · {{ fixture.competition.name }}
               </p>
               <p class="matchup">
-                <span>{{ fixture.home.name }}</span>
+                <span :title="japanesePlayersTitle(fixture.home.name)">{{ teamDisplayName(fixture.home.name) }}</span>
                 <span class="versus">vs</span>
-                <span>{{ fixture.away.name }}</span>
+                <span :title="japanesePlayersTitle(fixture.away.name)">{{ teamDisplayName(fixture.away.name) }}</span>
               </p>
             </div>
 
@@ -678,7 +687,7 @@ onUnmounted(() => {
               @click="toggleDraftTeam(team.id)"
             >
               <span>
-                <strong>{{ team.name }}</strong>
+                <strong>{{ teamDisplayName(team.name) }}</strong>
                 <small>{{ team.competitions.join(' · ') }}</small>
               </span>
               <span class="league-option__check" aria-hidden="true">
