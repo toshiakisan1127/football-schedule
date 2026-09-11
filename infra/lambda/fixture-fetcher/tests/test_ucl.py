@@ -43,3 +43,18 @@ def test_ucl_uses_v2_range_fetcher(monkeypatch) -> None:
             "to_date": date(2026, 10, 11),
         }
     ]
+
+
+def test_ucl_uses_provider_logo_when_static_logo_is_missing() -> None:
+    normalized = handler._normalized_team(
+        {
+            "id": "tm_example",
+            "name": "Example FC",
+            "logo": "https://images.kickoffapi.com/example-fc.webp",
+        },
+        team_name="Example FC",
+        team_id="tm_example",
+        competition_id="ucl",
+    )
+
+    assert normalized["logo"] == "https://images.kickoffapi.com/example-fc.webp"
