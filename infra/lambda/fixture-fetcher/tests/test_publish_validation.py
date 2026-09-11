@@ -54,9 +54,10 @@ def test_lambda_publishes_schema_version_after_validation(
 ) -> None:
     configure_lambda(monkeypatch)
 
+    fixture_ids = {"epl": 1001, "laliga": 2001, "bundesliga": 3001}
+
     def fake_fetch(**kwargs) -> list[dict]:
-        fixture_id = 1001 if kwargs["competition"].app_id == "epl" else 2001
-        return [raw_fixture(fixture_id)]
+        return [raw_fixture(fixture_ids[kwargs["competition"].app_id])]
 
     monkeypatch.setattr(handler, "_fetch_competition_fixtures", fake_fetch)
     published: list[dict] = []
