@@ -186,12 +186,14 @@ onBeforeUnmount(() => {
     <div v-if="isOpen" class="tutorial-backdrop">
       <section
         ref="dialogRef"
-        class="tutorial-modal"
+        class="tutorial-sheet"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="`tutorial-title-${currentStep}`"
         :aria-describedby="`tutorial-description-${currentStep}`"
       >
+        <div class="tutorial-handle" aria-hidden="true" />
+
         <header class="tutorial-header">
           <div>
             <p class="tutorial-kicker">使い方チュートリアル</p>
@@ -267,20 +269,34 @@ onBeforeUnmount(() => {
   position: fixed;
   z-index: 2000;
   inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgb(0 0 0 / 48%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(0 0 0 / 34%);
 }
 
-.tutorial-modal {
-  width: min(460px, 100%);
+.tutorial-sheet {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  width: min(620px, 100%);
+  height: min(62dvh, 610px);
+  min-height: 430px;
   overflow: hidden;
   border: 1px solid var(--border-strong);
-  border-radius: 16px;
+  border-bottom: 0;
+  border-radius: 22px 22px 0 0;
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 18px 55px rgb(0 0 0 / 30%);
+  box-shadow: 0 -10px 36px rgb(0 0 0 / 18%);
+  animation: tutorial-sheet-in 180ms ease-out;
+}
+
+.tutorial-handle {
+  width: 38px;
+  height: 4px;
+  margin: 9px auto 2px;
+  border-radius: 999px;
+  background: var(--border-strong);
 }
 
 .tutorial-header {
@@ -288,8 +304,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 18px 12px;
-  border-bottom: 1px solid var(--border);
+  padding: 9px 20px 12px;
 }
 
 .tutorial-kicker,
@@ -311,12 +326,11 @@ onBeforeUnmount(() => {
 }
 
 .tutorial-close {
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border: 0;
+  padding: 6px 0 6px 12px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -324,9 +338,10 @@ onBeforeUnmount(() => {
 .tutorial-progress {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 8px;
   margin: 0;
-  padding: 12px 18px;
+  padding: 10px 20px 12px;
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   list-style: none;
 }
@@ -365,11 +380,12 @@ onBeforeUnmount(() => {
 }
 
 .tutorial-content {
-  padding: 22px 22px 20px;
+  overflow-y: auto;
+  padding: 24px 22px 28px;
 }
 
 .tutorial-step-label {
-  margin-bottom: 6px;
+  margin-bottom: 7px;
   color: var(--text-muted);
   font-size: 0.64rem;
   font-weight: 800;
@@ -377,23 +393,23 @@ onBeforeUnmount(() => {
 }
 
 .tutorial-title {
-  margin: 0 0 9px;
-  font-size: 1.25rem;
-  line-height: 1.3;
+  margin: 0 0 10px;
+  font-size: clamp(1.22rem, 4.6vw, 1.55rem);
+  line-height: 1.32;
   outline: none;
 }
 
 .tutorial-description {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.86rem;
-  line-height: 1.65;
+  font-size: 0.88rem;
+  line-height: 1.7;
 }
 
 .tutorial-points {
   display: grid;
-  gap: 8px;
-  margin: 18px 0 0;
+  gap: 10px;
+  margin: 20px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -401,8 +417,8 @@ onBeforeUnmount(() => {
 .tutorial-points li {
   position: relative;
   padding-left: 20px;
-  font-size: 0.8rem;
-  line-height: 1.5;
+  font-size: 0.82rem;
+  line-height: 1.55;
 }
 
 .tutorial-points li::before {
@@ -419,15 +435,16 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .tutorial-primary,
 .tutorial-secondary {
-  min-height: 40px;
-  border-radius: 9px;
-  padding: 0 16px;
+  min-height: 42px;
+  border-radius: 10px;
+  padding: 0 17px;
   font-size: 0.8rem;
   font-weight: 750;
   cursor: pointer;
@@ -452,22 +469,28 @@ onBeforeUnmount(() => {
   outline-offset: 3px;
 }
 
-@media (max-width: 560px) {
-  .tutorial-backdrop {
-    align-items: end;
-    padding: 0;
+@keyframes tutorial-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0.92;
   }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
 
-  .tutorial-modal {
+@media (max-width: 560px) {
+  .tutorial-sheet {
     width: 100%;
+    height: 62dvh;
+    min-height: 420px;
     border-right: 0;
-    border-bottom: 0;
     border-left: 0;
-    border-radius: 16px 16px 0 0;
   }
 
   .tutorial-header {
-    padding-top: 14px;
+    padding-inline: 16px;
   }
 
   .tutorial-progress {
@@ -485,7 +508,24 @@ onBeforeUnmount(() => {
   }
 
   .tutorial-content {
-    padding: 20px 18px 18px;
+    padding: 22px 18px 24px;
+  }
+
+  .tutorial-footer {
+    padding-inline: 16px;
+  }
+}
+
+@media (max-height: 680px) {
+  .tutorial-sheet {
+    height: 72dvh;
+    min-height: 390px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-sheet {
+    animation: none;
   }
 }
 </style>
