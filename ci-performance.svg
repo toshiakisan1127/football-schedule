@@ -5,7 +5,7 @@
 <text x="32" y="38" font-size="21" font-weight="600" fill="#1f2328" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">CI performance</text>
 <text x="32" y="61" font-size="12" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Latest up to 30 successful main runs · workflow duration in seconds</text>
 <text x="32" y="104" font-size="17" font-weight="600" fill="#1f2328" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Lambda tests</text>
-<text x="872" y="104" text-anchor="end" font-size="13" font-weight="600" fill="#8250df" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Latest 41s · #32</text>
+<text x="872" y="104" text-anchor="end" font-size="13" font-weight="600" fill="#8250df" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Latest 1m 9s · #37</text>
 <line x1="70" y1="329.0" x2="872" y2="329.0" stroke="#d8dee4" stroke-width="1"/>
 <text x="60" y="333.0" text-anchor="end" font-size="11" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">0s</text>
 <line x1="70" y1="282.8" x2="872" y2="282.8" stroke="#d8dee4" stroke-width="1"/>
@@ -17,28 +17,29 @@
 <line x1="70" y1="144.0" x2="872" y2="144.0" stroke="#d8dee4" stroke-width="1"/>
 <text x="60" y="148.0" text-anchor="end" font-size="11" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">120s</text>
 <text x="70.0" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#3</text>
-<text x="193.4" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#8</text>
-<text x="316.8" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#12</text>
-<text x="440.2" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#17</text>
-<text x="563.5" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#21</text>
-<text x="686.9" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#25</text>
-<text x="810.3" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#30</text>
-<text x="872.0" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#32</text>
-<polyline points="70.0,241.1 131.7,241.1 193.4,227.2 255.1,235.0 316.8,216.5 378.5,244.2 440.2,239.6 501.8,236.5 563.5,272.0 625.2,276.6 686.9,270.4 748.6,272.0 810.3,279.7 872.0,265.8" fill="none" stroke="#8250df" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="184.6" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#8</text>
+<text x="299.1" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#12</text>
+<text x="413.7" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#17</text>
+<text x="528.3" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#21</text>
+<text x="642.9" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#25</text>
+<text x="757.4" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#30</text>
+<text x="872.0" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#37</text>
+<polyline points="70.0,241.1 127.3,241.1 184.6,227.2 241.9,235.0 299.1,216.5 356.4,244.2 413.7,239.6 471.0,236.5 528.3,272.0 585.6,276.6 642.9,270.4 700.1,272.0 757.4,279.7 814.7,265.8 872.0,222.6" fill="none" stroke="#8250df" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="70.0" cy="241.1" r="3.3" fill="#8250df"/>
-<circle cx="131.7" cy="241.1" r="3.3" fill="#8250df"/>
-<circle cx="193.4" cy="227.2" r="3.3" fill="#8250df"/>
-<circle cx="255.1" cy="235.0" r="3.3" fill="#8250df"/>
-<circle cx="316.8" cy="216.5" r="3.3" fill="#8250df"/>
-<circle cx="378.5" cy="244.2" r="3.3" fill="#8250df"/>
-<circle cx="440.2" cy="239.6" r="3.3" fill="#8250df"/>
-<circle cx="501.8" cy="236.5" r="3.3" fill="#8250df"/>
-<circle cx="563.5" cy="272.0" r="3.3" fill="#8250df"/>
-<circle cx="625.2" cy="276.6" r="3.3" fill="#8250df"/>
-<circle cx="686.9" cy="270.4" r="3.3" fill="#8250df"/>
-<circle cx="748.6" cy="272.0" r="3.3" fill="#8250df"/>
-<circle cx="810.3" cy="279.7" r="3.3" fill="#8250df"/>
-<circle cx="872.0" cy="265.8" r="3.3" fill="#8250df"/>
+<circle cx="127.3" cy="241.1" r="3.3" fill="#8250df"/>
+<circle cx="184.6" cy="227.2" r="3.3" fill="#8250df"/>
+<circle cx="241.9" cy="235.0" r="3.3" fill="#8250df"/>
+<circle cx="299.1" cy="216.5" r="3.3" fill="#8250df"/>
+<circle cx="356.4" cy="244.2" r="3.3" fill="#8250df"/>
+<circle cx="413.7" cy="239.6" r="3.3" fill="#8250df"/>
+<circle cx="471.0" cy="236.5" r="3.3" fill="#8250df"/>
+<circle cx="528.3" cy="272.0" r="3.3" fill="#8250df"/>
+<circle cx="585.6" cy="276.6" r="3.3" fill="#8250df"/>
+<circle cx="642.9" cy="270.4" r="3.3" fill="#8250df"/>
+<circle cx="700.1" cy="272.0" r="3.3" fill="#8250df"/>
+<circle cx="757.4" cy="279.7" r="3.3" fill="#8250df"/>
+<circle cx="814.7" cy="265.8" r="3.3" fill="#8250df"/>
+<circle cx="872.0" cy="222.6" r="3.3" fill="#8250df"/>
 <text x="32" y="382" font-size="17" font-weight="600" fill="#1f2328" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Deploy AWS infrastructure</text>
 <text x="872" y="382" text-anchor="end" font-size="13" font-weight="600" fill="#0969da" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Latest 4m 42s · #22</text>
 <line x1="70" y1="607.0" x2="872" y2="607.0" stroke="#d8dee4" stroke-width="1"/>
