@@ -1,5 +1,10 @@
 import tailwindcss from '@tailwindcss/vite'
 
+const siteUrl = 'https://dus59dgj79li1.cloudfront.net/'
+const siteTitle = 'サッカー試合日程 | Football Schedule'
+const siteDescription = 'プレミアリーグ・ラ・リーガの試合日程を日本時間で見やすく確認できるアプリ。見たいチームの試合時間をすぐ確認できます。'
+const ogImageUrl = new URL('og-image.svg', siteUrl).toString()
+
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: true },
@@ -16,12 +21,26 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: 'ja' },
-      title: 'サッカー試合日程 | Football Schedule',
+      title: siteTitle,
       meta: [
         {
           name: 'description',
-          content: 'サッカーの試合日程を日本時間で見やすく確認できるアプリ。現在はプレミアリーグに対応。',
+          content: siteDescription,
         },
+        { property: 'og:title', content: siteTitle },
+        { property: 'og:description', content: siteDescription },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:url', content: siteUrl },
+        { property: 'og:image', content: ogImageUrl },
+        { property: 'og:image:type', content: 'image/svg+xml' },
+        { property: 'og:image:width', content: '1200' },
+        { property: 'og:image:height', content: '630' },
+        { property: 'og:site_name', content: 'サッカー試合日程' },
+        { property: 'og:locale', content: 'ja_JP' },
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:title', content: siteTitle },
+        { name: 'twitter:description', content: siteDescription },
+        { name: 'twitter:image', content: ogImageUrl },
         { name: 'theme-color', content: '#0c1117' },
         { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
