@@ -49,15 +49,19 @@ def raw_v2_fixture(
     time: str | None,
     home_id: str | None = "tm_home",
     away_id: str | None = "tm_away",
+    home_name: str = "Sevilla FC",
+    away_name: str = "Valencia CF",
+    league_id: str = "lg_laliga",
+    league_name: str = "La Liga",
 ) -> dict:
     return {
         "id": fixture_id,
         "date": kickoff,
         "time": time,
         "status": {"long": "Not Started", "short": "NS", "elapsed": None},
-        "league": {"id": "lg_laliga", "name": "La Liga", "season": 2026},
-        "home": {"id": home_id, "name": "Sevilla FC"},
-        "away": {"id": away_id, "name": "Valencia CF"},
+        "league": {"id": league_id, "name": league_name, "season": 2026},
+        "home": {"id": home_id, "name": home_name},
+        "away": {"id": away_id, "name": away_name},
         "score": None,
         "round": "Matchday 5",
         "source": "owned",
@@ -68,15 +72,19 @@ def competition() -> handler.Competition:
     return handler.COMPETITIONS[0]
 
 
-def test_mvp_fetches_premier_league_and_laliga() -> None:
+def test_supported_competitions_and_provider_ids() -> None:
     assert [
         (item.app_id, item.api_league_id, item.name, item.country)
         for item in handler.COMPETITIONS
     ] == [
         ("epl", 39, "Premier League", "England"),
         ("laliga", 140, "La Liga", "Spain"),
+        ("bundesliga", 78, "Bundesliga", "Germany"),
     ]
-    assert handler.LALIGA_V2_LEAGUE_ID == "es.1"
+    assert handler.V2_LEAGUE_IDS == {
+        "laliga": "es.1",
+        "bundesliga": "de.1",
+    }
 
 
 @pytest.mark.parametrize(
@@ -284,6 +292,51 @@ def test_fetch_competition_fixtures_uses_laliga_v2_cursor_paging(
     assert calls[1]["params"] == {"league": "es.1", "season": 2026, "cursor": "200"}
 
 
+def test_fetch_competition_fixtures_uses_bundesliga_v2_range_and_cursor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict] = []
+
+    def fake_get_api_json(path: str, *, api_key: str, params: dict) -> dict:
+        calls.append({"path": path, "params": params.copy()})
+        fixture_id = "de-first" if "cursor" not in params else "de-second"
+        next_cursor = "50" if "cursor" not in params else None
+        return {
+            "data": [
+                raw_v2_fixture(
+                    fixture_id=fixture_id,
+                    kickoff="2026-09-12T13:30:00.000Z",
+                    time=None,
+                    home_name="Bayern München",
+                    away_name="Borussia Dortmund",
+                    league_id="de.1",
+                    league_name="Bundesliga",
+                )
+            ],
+            "meta": {"count": 1, "cursor": 0, "nextCursor": next_cursor},
+        }
+
+    monkeypatch.setattr(handler, "_get_api_json", fake_get_api_json)
+
+    fixtures = handler._fetch_competition_fixtures(
+        api_key="secret",
+        competition=handler.COMPETITIONS[2],
+        season=2026,
+        from_date=date(2026, 9, 10),
+        to_date=date(2026, 10, 11),
+    )
+
+    assert [fixture["id"] for fixture in fixtures] == ["de-first", "de-second"]
+    assert calls[0]["path"] == "/api/v2/fixtures"
+    assert calls[0]["params"] == {
+        "league": "de.1",
+        "season": 2026,
+        "from": "2026-09-10",
+        "to": "2026-10-11",
+    }
+    assert calls[1]["params"]["cursor"] == "50"
+
+
 def test_fetch_competition_fixtures_rejects_missing_v1_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -362,10 +415,10 @@ def test_lambda_publishes_once_after_all_competitions_succeed(
 
     def fake_fetch(**kwargs) -> list[dict]:
         current_competition = kwargs["competition"]
-        fixture_id = 1001 if current_competition.app_id == "epl" else 2001
+        fixture_ids = {"epl": 1001, "laliga": 2001, "bundesliga": 3001}
         return [
             raw_fixture(
-                fixture_id=fixture_id,
+                fixture_id=fixture_ids[current_competition.app_id],
                 kickoff="2026-09-12T06:00:00Z",
                 status="FT",
                 home_goals=2,
@@ -381,13 +434,14 @@ def test_lambda_publishes_once_after_all_competitions_succeed(
 
     assert result["ok"] is True
     assert result["published"] is True
-    assert result["fixtureCount"] == 2
+    assert result["fixtureCount"] == 3
     assert len(published) == 1
 
     body = json.loads(published[0]["body"].decode("utf-8"))
     assert {fixture["competition"]["id"] for fixture in body["fixtures"]} == {
         "epl",
         "laliga",
+        "bundesliga",
     }
     assert all(fixture["score"] is not None for fixture in body["fixtures"])
     assert body["range"]["from"] <= body["range"]["to"]
