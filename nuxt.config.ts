@@ -7,6 +7,7 @@ export default defineNuxtConfig({
     '~/assets/css/tailwind.css',
     '~/assets/css/main.css',
     '~/assets/css/team-filter.css',
+    '~/assets/css/fixture-team-name.css',
   ],
   vite: {
     plugins: [tailwindcss()],
