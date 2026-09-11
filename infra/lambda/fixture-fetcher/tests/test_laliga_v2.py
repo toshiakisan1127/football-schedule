@@ -170,24 +170,81 @@ def test_selection_ignores_unpaired_placeholder_when_verified_pair_exists() -> N
     assert [item["id"] for item in selected] == ["canonical"]
 
 
-def test_selection_fails_closed_when_relevant_group_has_no_verified_pair() -> None:
+def test_selection_skips_relevant_group_with_no_verified_pair(caplog: pytest.LogCaptureFixture) -> None:
     raw = [
         fixture(
-            fixture_id="placeholder",
-            kickoff="2026-09-13T12:00:00.000Z",
+            fixture_id="candidate-new",
+            kickoff="2026-10-09T19:00:00.000Z",
             time=None,
+            home="Málaga CF",
+            away="RCD Espanyol de Barcelona",
+            round_name="Matchday 8",
+        ),
+        fixture(
+            fixture_id="placeholder",
+            kickoff="2026-10-11T12:00:00.000Z",
+            time=None,
+            home="Málaga CF",
+            away="RCD Espanyol de Barcelona",
+            round_name="Matchday 8",
+        ),
+    ]
+
+    with caplog.at_level("WARNING"):
+        selected = select_canonical_fixtures(
+            raw,
+            from_date=date(2026, 9, 10),
+            to_date=date(2026, 10, 11),
+        )
+
+    assert selected == []
+    assert "Skipping unresolved La Liga v2 fixture" in caplog.text
+    assert "Málaga CF" in caplog.text
+
+
+def test_selection_keeps_verified_groups_when_another_relevant_group_is_unresolved() -> None:
+    verified = fixture(
+        fixture_id="verified",
+        kickoff="2026-09-11T19:00:00.000Z",
+        time=None,
+        home="Sevilla FC",
+        away="Valencia CF",
+        round_name="Matchday 5",
+    )
+    raw = [
+        verified,
+        wall_clock_sibling(
+            fixture_id="verified-wall-clock",
+            kickoff=verified["date"],
             home="Sevilla FC",
             away="Valencia CF",
             round_name="Matchday 5",
-        )
+        ),
+        fixture(
+            fixture_id="unresolved-new",
+            kickoff="2026-10-09T19:00:00.000Z",
+            time=None,
+            home="Málaga CF",
+            away="RCD Espanyol de Barcelona",
+            round_name="Matchday 8",
+        ),
+        fixture(
+            fixture_id="unresolved-placeholder",
+            kickoff="2026-10-11T12:00:00.000Z",
+            time=None,
+            home="Málaga CF",
+            away="RCD Espanyol de Barcelona",
+            round_name="Matchday 8",
+        ),
     ]
 
-    with pytest.raises(LaLigaV2SelectionError, match="selected=0"):
-        select_canonical_fixtures(
-            raw,
-            from_date=date(2026, 9, 10),
-            to_date=date(2026, 9, 20),
-        )
+    selected = select_canonical_fixtures(
+        raw,
+        from_date=date(2026, 9, 10),
+        to_date=date(2026, 10, 11),
+    )
+
+    assert [item["id"] for item in selected] == ["verified"]
 
 
 def test_selection_fails_closed_when_two_verified_pairs_exist() -> None:
