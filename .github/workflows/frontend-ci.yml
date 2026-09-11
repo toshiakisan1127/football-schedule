@@ -11,18 +11,6 @@ on:
       - 'package-lock.json'
       - '.github/workflows/frontend-ci.yml'
       - '.github/workflows/deploy-site.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'app/**'
-      - 'public/**'
-      - 'nuxt.config.ts'
-      - 'tsconfig.json'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/frontend-ci.yml'
-      - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
 permissions:
@@ -41,12 +29,10 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: |
-            package.json
-            infra/package.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm install --prefer-offline --no-audit --no-fund
+      - name: Install frontend dependencies
+        run: npm ci --workspaces=false --prefer-offline --no-audit --no-fund
 
       - name: Typecheck
         run: npm run typecheck
