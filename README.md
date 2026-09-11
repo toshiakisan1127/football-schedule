@@ -27,10 +27,10 @@ mainブランチで直近に完了したWorkflowの実行時間です。Workflow
 
 ## MVP
 
-まずはKickoffAPI v1で安定して取得できる以下の2大会を有効化しています。
+現在は以下の2大会を有効化しています。
 
-- Premier League
-- La Liga
+- Premier League（KickoffAPI v1）
+- La Liga（KickoffAPI v2。重複候補をLambdaで検証・正規化）
 - 今日 / 明日 / 今週末の切り替え
 - 大会フィルター
 - お気に入りクラブの保存（localStorage）
@@ -47,8 +47,9 @@ UEFA Champions Leagueは次の追加対象です。J1はKickoffAPIの2026シー�
 EventBridge Scheduler
         |
         v
-      Lambda  -----> KickoffAPI v1
+      Lambda  -----> KickoffAPI v1 / v2
         |
+        | provider-specific validation
         | normalize / filter
         v
 S3 (data/fixtures.json)
@@ -62,7 +63,7 @@ S3 (data/fixtures.json)
 
 フロントエンドから外部APIを直接呼びません。Lambdaが定期的に日程を取得し、アプリ独自のJSON形式へ正規化してS3へ保存します。フロントエンドはCloudFront経由で静的JSONを読むだけにします。
 
-詳細は [`docs/architecture.md`](docs/architecture.md) を参照してください。
+詳細は [`docs/architecture.md`](docs/architecture.md) と [`docs/data-source.md`](docs/data-source.md) を参照してください。La Liga v2の検証内容は [`docs/kickoffapi-laliga-v2-validation.md`](docs/kickoffapi-laliga-v2-validation.md) に残しています。
 
 ## 方針
 
@@ -81,7 +82,7 @@ S3 (data/fixtures.json)
 - Amazon CloudFront
 - AWS Lambda
 - Amazon EventBridge Scheduler
-- KickoffAPI v1
+- KickoffAPI v1 / v2
 
 ## Status
 
