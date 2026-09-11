@@ -27,7 +27,8 @@ def test_static_logo_snapshot_covers_supported_leagues() -> None:
     assert len(TEAM_LOGOS["laliga"]) == 20
     assert len(TEAM_LOGOS["bundesliga"]) == 18
     assert len(TEAM_LOGOS["ligue1"]) == 18
-    assert TEAM_LOGOS["j1"] == {}
+    assert len(TEAM_LOGOS["j1"]) == 20
+    assert sum(len(teams) for teams in TEAM_LOGOS.values()) == 96
 
 
 def test_static_logo_snapshot_has_expected_known_teams() -> None:
@@ -45,6 +46,9 @@ def test_static_logo_snapshot_has_expected_known_teams() -> None:
     )
     assert get_static_team_logo("ligue1", "Paris Saint Germain") == (
         "https://images.kickoffapi.com/images/logos/85.png?format=webp"
+    )
+    assert get_static_team_logo("j1", "Kawasaki Frontale") == (
+        "https://images.kickoffapi.com/images/logos/294.png?format=webp"
     )
 
 
