@@ -54,10 +54,12 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: infra/package.json
 
       - name: Install CDK dependencies
-        run: npm ci --workspace infra --include-workspace-root=false --prefer-offline --no-audit --no-fund
+        working-directory: infra
+        run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Typecheck CDK
-        run: npm --workspace infra run typecheck
+        working-directory: infra
+        run: npm run typecheck
