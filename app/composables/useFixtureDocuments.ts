@@ -20,11 +20,21 @@ export const useFixtureDocuments = async (baseURL: string) => {
     error,
   } = await useAsyncData<FixtureDocument[]>(
     'fixture-documents',
-    async () => sortDocuments(
-      await Promise.all(
+    async () => {
+      const results = await Promise.allSettled(
         splitUrls.map((url) => $fetch<FixtureDocument>(url, { cache: 'no-store' })),
-      ),
-    ),
+      )
+
+      const loaded = results.flatMap((result) =>
+        result.status === 'fulfilled' ? [result.value] : [],
+      )
+
+      if (loaded.length === 0) {
+        throw new Error('Failed to load all fixture documents')
+      }
+
+      return sortDocuments(loaded)
+    },
     { server: false },
   )
 
