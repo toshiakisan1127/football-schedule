@@ -27,11 +27,10 @@ mainブランチで直近に完了したWorkflowの実行時間です。Workflow
 
 ## MVP
 
-まずはKickoffAPI v2で取得できる以下の3大会に絞ります。
+まずはKickoffAPI v1で安定して取得できる以下の2大会を有効化しています。
 
 - Premier League
-- LaLiga
-- UEFA Champions League
+- La Liga
 - 今日 / 明日 / 今週末の切り替え
 - 大会フィルター
 - お気に入りクラブの保存（localStorage）
@@ -40,7 +39,7 @@ mainブランチで直近に完了したWorkflowの実行時間です。Workflow
 - 試合結果の表示・非表示切り替え
 - データ最終更新時刻の表示
 
-J1はKickoffAPIの2026/27シーズン対応を確認できていないため、一旦MVP対象外です。
+UEFA Champions Leagueは次の追加対象です。J1はKickoffAPIの2026シーズン対応を確認できていないため、一旦MVP対象外です。
 
 ## アーキテクチャ
 
@@ -48,7 +47,7 @@ J1はKickoffAPIの2026/27シーズン対応を確認できていないため、�
 EventBridge Scheduler
         |
         v
-      Lambda  -----> KickoffAPI v2
+      Lambda  -----> KickoffAPI v1
         |
         | normalize / filter
         v
@@ -82,7 +81,7 @@ S3 (data/fixtures.json)
 - Amazon CloudFront
 - AWS Lambda
 - Amazon EventBridge Scheduler
-- KickoffAPI v2
+- KickoffAPI v1
 
 ## Status
 
