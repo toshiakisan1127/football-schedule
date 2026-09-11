@@ -36,9 +36,12 @@ const isTeamSettingsOpen = ref(false)
 const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
 const showResults = ref(false)
+const japaneseTeamsOnly = ref(false)
+
+const hasJapanesePlayer = (name: string) => japanesePlayersForTeam(name).length > 0
 
 const teamDisplayName = (name: string) =>
-  japanesePlayersForTeam(name).length > 0 ? `${name} 🇯🇵` : name
+  hasJapanesePlayer(name) ? `${name} 🇯🇵` : name
 
 const japanesePlayersTitle = (name: string) => {
   const players = japanesePlayersForTeam(name)
@@ -295,6 +298,12 @@ const filteredFixtures = computed(() => {
     )
   }
 
+  if (japaneseTeamsOnly.value) {
+    fixtures = fixtures.filter((fixture) =>
+      hasJapanesePlayer(fixture.home.name) || hasJapanesePlayer(fixture.away.name),
+    )
+  }
+
   if (!targetDateKeys.value) return fixtures
 
   return fixtures.filter((fixture) => targetDateKeys.value?.has(localDateKey(fixture.kickoff)))
@@ -336,7 +345,8 @@ const generatedAtLabel = computed(() => {
 })
 
 const emptyMessage = computed(() => {
-  const hasDisplayFilter = !isAllCompetitionsSelected.value || !isAllTeamsSelected.value
+  const hasDisplayFilter =
+    !isAllCompetitionsSelected.value || !isAllTeamsSelected.value || japaneseTeamsOnly.value
   const prefix = hasDisplayFilter ? '条件に合う' : ''
 
   if (selectedFilter.value === 'all') return `${prefix}表示できる試合がありません。`
@@ -359,6 +369,14 @@ const toggleTheme = () => {
 const toggleResults = () => {
   showResults.value = !showResults.value
   localStorage.setItem('football-schedule-show-results', String(showResults.value))
+}
+
+const toggleJapaneseTeamsOnly = () => {
+  japaneseTeamsOnly.value = !japaneseTeamsOnly.value
+  localStorage.setItem(
+    'football-schedule-japanese-teams-only',
+    String(japaneseTeamsOnly.value),
+  )
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
@@ -384,6 +402,8 @@ onMounted(() => {
 
   applyTheme(initialTheme)
   showResults.value = localStorage.getItem('football-schedule-show-results') === 'true'
+  japaneseTeamsOnly.value =
+    localStorage.getItem('football-schedule-japanese-teams-only') === 'true'
 
   const savedCompetitions = localStorage.getItem('football-schedule-competitions')
   if (savedCompetitions) {
@@ -463,6 +483,18 @@ onUnmounted(() => {
         @click="selectedFilter = filter.value"
       >
         {{ filter.label }}
+      </button>
+    </nav>
+
+    <nav class="quick-filters" aria-label="チームフィルター">
+      <button
+        type="button"
+        class="filter-button"
+        :class="{ 'filter-button--active': japaneseTeamsOnly }"
+        :aria-pressed="japaneseTeamsOnly"
+        @click="toggleJapaneseTeamsOnly"
+      >
+        🇯🇵 日本人所属のみ
       </button>
     </nav>
 
