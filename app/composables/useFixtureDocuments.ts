@@ -5,6 +5,7 @@ const FIXTURE_SOURCES = [
   { id: 'laliga', file: 'laliga.json' },
   { id: 'bundesliga', file: 'bundesliga.json' },
   { id: 'ligue1', file: 'ligue1.json' },
+  { id: 'ucl', file: 'champions-league.json' },
 ] as const
 
 const sortDocuments = (documents: FixtureDocument[]) =>
