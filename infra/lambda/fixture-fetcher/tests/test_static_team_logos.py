@@ -22,7 +22,7 @@ def _fixture(*, fixture_id: str, kickoff: str, time: str | None) -> dict:
 
 
 def test_static_logo_snapshot_covers_supported_leagues() -> None:
-    assert set(TEAM_LOGOS) == {"epl", "laliga", "bundesliga"}
+    assert set(TEAM_LOGOS) == {"epl", "laliga", "bundesliga", "ligue1"}
     assert len(TEAM_LOGOS["epl"]) == 20
     assert len(TEAM_LOGOS["laliga"]) == 20
     assert len(TEAM_LOGOS["bundesliga"]) == 18
