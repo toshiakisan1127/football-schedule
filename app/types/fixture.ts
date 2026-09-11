@@ -3,6 +3,7 @@ export type FixtureStatus = 'scheduled' | 'live' | 'finished' | 'postponed' | 'c
 export interface FixtureTeam {
   id: string
   name: string
+  logo?: string
 }
 
 export interface FixtureCompetition {
