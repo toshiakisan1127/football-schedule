@@ -9,11 +9,26 @@ const FIXTURE_SOURCES = [
 const sortDocuments = (documents: FixtureDocument[]) =>
   [...documents].sort((a, b) => a.competition.id.localeCompare(b.competition.id))
 
-export const useFixtureDocuments = async (baseURL: string) => {
-  const splitUrls = FIXTURE_SOURCES.map(
-    (source) => `${baseURL}data/fixtures/${source.file}`,
-  )
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
+const isFixtureDocument = (
+  value: unknown,
+  expectedCompetitionId: string,
+): value is FixtureDocument => {
+  if (!isRecord(value)) return false
+  if (value.schemaVersion !== 1) return false
+  if (!isRecord(value.competition)) return false
+  if (value.competition.id !== expectedCompetitionId) return false
+  if (typeof value.competition.name !== 'string') return false
+  if (typeof value.competition.country !== 'string') return false
+  if (typeof value.generatedAt !== 'string') return false
+  if (!isRecord(value.range)) return false
+  if (typeof value.range.from !== 'string' || typeof value.range.to !== 'string') return false
+  return Array.isArray(value.fixtures)
+}
+
+export const useFixtureDocuments = async (baseURL: string) => {
   const {
     data: documents,
     status,
@@ -22,7 +37,16 @@ export const useFixtureDocuments = async (baseURL: string) => {
     'fixture-documents',
     async () => {
       const results = await Promise.allSettled(
-        splitUrls.map((url) => $fetch<FixtureDocument>(url, { cache: 'no-store' })),
+        FIXTURE_SOURCES.map(async (source) => {
+          const url = `${baseURL}data/fixtures/${source.file}`
+          const value = await $fetch<unknown>(url, { cache: 'no-store' })
+
+          if (!isFixtureDocument(value, source.id)) {
+            throw new Error(`Invalid fixture document: ${source.id}`)
+          }
+
+          return value
+        }),
       )
 
       const loaded = results.flatMap((result) =>
