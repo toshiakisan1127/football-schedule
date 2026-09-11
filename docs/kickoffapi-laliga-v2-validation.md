@@ -60,8 +60,9 @@ Within each group:
 4. Require a sibling row in the same group whose:
    - `time` equals that Madrid `HH:MM`, and
    - UTC-labelled `date` contains that same Madrid local calendar date and `HH:MM`.
-5. Exactly one candidate must satisfy the rule.
-6. If zero or multiple candidates satisfy it for a group in the publication window, fail closed and do not replace the existing known-good S3 document.
+5. If exactly one candidate satisfies the rule, publish that fixture.
+6. If zero candidates satisfy it, skip that fixture and emit a warning instead of guessing a kickoff time or failing the entire La Liga refresh.
+7. If multiple candidates satisfy it, fail closed because the provider is presenting multiple independently verified kickoff times.
 
 The final normalized fixture still passes through the existing JST publication-window filter.
 
@@ -84,10 +85,28 @@ rule_none               : 0
 
 The initial version of the rule matched 22/24 uniquely. The two ambiguous cases were caused by allowing a wall-clock sibling from a different calendar date. Requiring the sibling date to match the candidate's Madrid-local calendar date resolved both cases and produced 24/24 exact matches.
 
+## Production edge case: partial Matchday 8 update
+
+On 2026-09-11 production received the following two rows for Málaga CF vs RCD Espanyol de Barcelona, Matchday 8:
+
+```text
+2026-10-09T19:00:00.000Z  time=null
+2026-10-11T12:00:00.000Z  time=null
+```
+
+Neither row had the Madrid wall-clock sibling required by the validated rule, so the original implementation raised `selected=0` and blocked the whole refresh.
+
+LALIGA had already announced the Matchday 8 schedule on 2026-09-10, including Málaga CF vs RCD Espanyol on 2026-10-09 at 21:00 Europe/Madrid, which corresponds to `2026-10-09T19:00:00Z`. That confirms the first provider row was current, while the second behaved like an older placeholder. However, the application intentionally does not infer this from the two v2 rows alone because the same heuristic could choose the wrong record in another match.
+
+Reference: https://www.laliga.com/noticias/horarios-de-la-octava-jornada-de-laliga-ea-sports-2026-27
+
+The safe behavior is therefore per-fixture fail closed: omit unresolved groups until KickoffAPI exposes enough information to verify one canonical row, while still publishing every other verified fixture.
+
 ## Provider strategy adopted
 
 - Premier League: KickoffAPI v1 (`league=39`), including provider-side `from` / `to` plus application-side JST filtering.
 - La Liga: KickoffAPI v2 (`league=es.1`), cursor pagination across the returned season data, canonical-row selection using the rule above, then application-side JST filtering.
+- Unresolved La Liga groups are skipped with warning diagnostics; they do not block already verified fixtures.
 - The frontend continues to consume only the application-owned validated `data/fixtures.json` format and does not know which provider version supplied a competition.
 
 ## Regression coverage
@@ -95,7 +114,8 @@ The initial version of the rule matched 22/24 uniquely. The two ambiguous cases 
 Unit tests preserve the 24 verified fixture kickoffs and assert that the canonical selection rule reproduces all 24. Separate tests cover:
 
 - an unpaired placeholder not winning over a verified UTC/Madrid pair,
-- zero canonical candidates failing closed,
+- the production Matchday 8 unresolved pattern being skipped with a warning,
+- verified fixtures still being returned when another in-window group is unresolved,
 - multiple canonical candidates failing closed,
 - unresolved groups outside the current publication window being ignored,
 - team IDs being backfilled from sibling rows when the canonical row has a null team ID,
@@ -103,4 +123,4 @@ Unit tests preserve the 24 verified fixture kickoffs and assert that the canonic
 
 ## Revalidation trigger
 
-Re-run this comparison before changing the selection rule, when KickoffAPI changes the v2 fixture contract, or if production starts failing canonical selection. The safest fallback is to keep the previous known-good S3 document rather than publish a guessed kickoff time.
+Re-run this comparison before changing the selection rule, when KickoffAPI changes the v2 fixture contract, or when warning logs show unresolved groups. Do not publish a guessed kickoff time. If a group cannot be verified, omit only that group and keep publishing the remaining known-good fixtures; keep whole-refresh failure for cases where the data is internally contradictory, such as multiple verified canonical candidates.
