@@ -25,45 +25,83 @@ mainブランチで直近に完了したWorkflowの実行時間です。Workflow
 
 ニュース・順位表を主役にせず、「いつ試合があるか」を素早く確認できることに特化します。試合結果は初期状態では隠し、必要な場合だけ表示できます。
 
-## MVP
+## 現在の対応範囲
 
 現在は以下の2大会を有効化しています。
 
-- Premier League（KickoffAPI v1）
-- La Liga（KickoffAPI v2。重複候補をLambdaで検証・正規化）
-- 今日 / 明日 / 今週末の切り替え
-- 大会フィルター
-- お気に入りクラブの保存（localStorage）
-- キックオフ時刻を利用者のローカル時刻で表示
+- Premier League: KickoffAPI v1
+- La Liga: KickoffAPI v2
+
+主な機能:
+
+- 全日程 / 今日 / 明日 / 今週末の切り替え
+- 複数リーグの表示フィルター
+- 複数のお気に入りチームによる絞り込み
+- リーグ・チーム設定のlocalStorage保存
+- キックオフ時刻を日本時間（JST）で表示
 - live / finished / postponed / cancelled の状態管理
 - 試合結果の表示・非表示切り替え
+- ライト / ダークテーマ
+- 日本人選手所属チームへの 🇯🇵 表示
+- providerレスポンスに含まれるチームロゴの表示
 - データ最終更新時刻の表示
 
-UEFA Champions Leagueは次の追加対象です。J1はKickoffAPIの2026シーズン対応を確認できていないため、一旦MVP対象外です。
+UEFA Champions Leagueは次の追加対象です。J1はKickoffAPIの2026シーズン対応を確認できていないため、一旦対象外です。
 
 ## アーキテクチャ
 
 ```text
-EventBridge Scheduler
-        |
-        v
-      Lambda  -----> KickoffAPI v1 / v2
-        |
-        | provider-specific validation
-        | normalize / filter
-        v
-S3 (data/fixtures.json)
-        |
-        v
-   CloudFront
-        |
-        v
-    Nuxt / PWA
+                         +----------------------+
+                         | SSM SecureString     |
+                         | KickoffAPI API key   |
+                         +----------+-----------+
+                                    |
+EventBridge Scheduler               v
+(rate 6 hours / ENABLED) --> Fixture Fetcher Lambda
+                                    |
+                     +--------------+--------------+
+                     |                             |
+                     v                             v
+          Premier League / v1           La Liga / v2
+                                             |
+                                  cursor pagination
+                                  canonical selection
+                     |                             |
+                     +--------------+--------------+
+                                    |
+                                    | normalize
+                                    | JST window filter
+                                    | schema validation
+                                    v
+                         S3 data bucket
+                         data/fixtures.json
+                                    |
+                                    +----------+
+                                               |
+Nuxt static output --> S3 site bucket          |
+        |                                      |
+        +------------------+-------------------+
+                           v
+                       CloudFront
+                           |
+                           v
+                        Browser
 ```
 
-フロントエンドから外部APIを直接呼びません。Lambdaが定期的に日程を取得し、アプリ独自のJSON形式へ正規化してS3へ保存します。フロントエンドはCloudFront経由で静的JSONを読むだけにします。
+フロントエンドからKickoffAPIを直接呼びません。Lambdaが定期的に日程を取得し、provider差分を吸収してアプリ独自のJSON形式へ正規化・検証してS3へ保存します。ブラウザはCloudFront経由で静的サイトと `data/fixtures.json` を読むだけです。
+
+現在の取得範囲は**前日から30日先まで**です。全大会の取得・provider固有検証・公開JSON検証が成功した場合だけS3を更新するため、外部API障害や不正データ発生時は直前の正常な `fixtures.json` を維持します。
 
 詳細は [`docs/architecture.md`](docs/architecture.md) と [`docs/data-source.md`](docs/data-source.md) を参照してください。La Liga v2の検証内容は [`docs/kickoffapi-laliga-v2-validation.md`](docs/kickoffapi-laliga-v2-validation.md) に残しています。
+
+## デプロイ
+
+- フロントエンド: mainへの対象変更でNuxtを静的生成し、Site S3へ同期後CloudFrontをinvalidate
+- AWSインフラ: CDK synth / diffを実行し、同じassemblyをimmutableなdeploy artifactとして保存
+- Fixture Fetcher Lambdaだけの変更: 自動デプロイ
+- それ以外のインフラ変更: GitHub Environment `production` の承認後にデプロイ
+- 承認後もdeploy入力が変わっていないこととartifact hashを確認してから実行
+- GitHub ActionsからAWSへの認証はOIDCを使用し、長期Access Keyは持たない
 
 ## 方針
 
@@ -71,19 +109,27 @@ S3 (data/fixtures.json)
 - APIキーをブラウザへ露出しない
 - 外部API障害時は既存の正常なJSONを残す
 - 外部API固有のレスポンス形式をフロントへ漏らさない
-- 保存時刻はUTC、表示時にローカルタイムへ変換する
-- チームロゴ等の権利物はMVPでは依存しない
+- `schemaVersion` 付きのJSON契約をLambdaで検証してから公開する
+- 保存時刻はUTC、日程のwindow判定と画面表示はJSTで行う
+- S3 bucketは非公開とし、CloudFront Origin Access Control経由で配信する
+- CloudFrontはAWS Managed Cache Policyを利用し、Free Planで使える構成を維持する
+- チームロゴはfixtureレスポンスに含まれる場合だけ利用し、欠損補完のための追加API呼び出しはしない
+- 日本人選手情報はフロント側の明示的なメタデータとして管理する
 
 ## Tech Stack
 
-- Nuxt 4 / TypeScript
+- Nuxt 4 / Vue 3 / TypeScript
+- Tailwind CSS 4
 - AWS CDK / TypeScript
+- Python 3.13
 - Amazon S3
 - Amazon CloudFront
 - AWS Lambda
 - Amazon EventBridge Scheduler
+- AWS Systems Manager Parameter Store
+- GitHub Actions / OIDC
 - KickoffAPI v1 / v2
 
 ## Status
 
-MVP設計・初期構築中。
+Premier League / La Ligaの日程取得・公開まで稼働中。機能追加と運用改善を継続しています。
