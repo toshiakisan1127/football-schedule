@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import Any
@@ -7,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 JST = ZoneInfo("Asia/Tokyo")
 MADRID = ZoneInfo("Europe/Madrid")
+LOGGER = logging.getLogger(__name__)
 
 
 class LaLigaV2SelectionError(RuntimeError):
@@ -25,8 +27,11 @@ def select_canonical_fixtures(
     wall-clock value in ``time``.
 
     Only groups that overlap the requested JST publication window are
-    required to resolve. If a relevant group cannot be resolved to exactly
-    one record, fail closed so the previous known-good S3 document remains.
+    considered. A group with no verified canonical candidate is skipped so a
+    provider-side partial update does not block publication of every other
+    trustworthy fixture. A group with multiple verified candidates still fails
+    closed because choosing between two independently verified times would be
+    unsafe.
     """
 
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -44,7 +49,16 @@ def select_canonical_fixtures(
             if candidate.get("time") is None
             and _has_madrid_wall_clock_sibling(candidate, candidates)
         ]
-        if len(matches) != 1:
+        if len(matches) == 0:
+            LOGGER.warning(
+                "Skipping unresolved La Liga v2 fixture: home=%r away=%r round=%r candidates=%r",
+                key[0],
+                key[1],
+                key[2],
+                _diagnostics(candidates),
+            )
+            continue
+        if len(matches) > 1:
             raise LaLigaV2SelectionError(
                 "Could not select exactly one canonical La Liga v2 fixture "
                 f"for home={key[0]!r} away={key[1]!r} round={key[2]!r}: "
