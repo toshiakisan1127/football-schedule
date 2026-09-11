@@ -28,7 +28,7 @@ export class DataStack extends Stack {
 
     const fixtureFetcher = new lambda.Function(this, 'FixtureFetcher', {
       runtime: lambda.Runtime.PYTHON_3_13,
-      handler: 'handler.lambda_handler',
+      handler: 'split_handler.lambda_handler',
       code: lambda.Code.fromAsset(path.join(process.cwd(), 'lambda', 'fixture-fetcher'), {
         bundling: {
           image: lambda.Runtime.PYTHON_3_13.bundlingImage,
@@ -40,7 +40,7 @@ export class DataStack extends Stack {
       environment: {
         DATA_BUCKET_NAME: props.dataBucket.bucketName,
         API_KEY_PARAMETER_NAME: apiKeyParameterName,
-        FIXTURE_OBJECT_KEY: 'data/fixtures.json',
+        FIXTURE_OBJECT_PREFIX: 'data/fixtures',
         LOOKBACK_DAYS: '1',
         LOOKAHEAD_DAYS: '30',
       },
