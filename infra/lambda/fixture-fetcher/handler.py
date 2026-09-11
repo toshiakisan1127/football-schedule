@@ -13,13 +13,17 @@ import boto3
 import requests
 
 from laliga_v2 import LaLigaV2SelectionError, select_canonical_fixtures
+from team_logos import get_static_team_logo
 from validation import SCHEMA_VERSION, FixtureDocumentValidationError, validate_fixture_document
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 API_BASE_URL = "https://api.kickoffapi.com"
 JST = ZoneInfo("Asia/Tokyo")
-LALIGA_V2_LEAGUE_ID = "es.1"
+V2_LEAGUE_IDS = {
+    "laliga": "es.1",
+    "bundesliga": "de.1",
+}
 
 SCHEDULED_STATUSES = {"tbd", "ns", "scheduled", "not started"}
 LIVE_STATUSES = {"1h", "ht", "2h", "et", "bt", "p", "live"}
@@ -40,6 +44,7 @@ class Competition:
 COMPETITIONS = (
     Competition("epl", 39, "Premier League", "England"),
     Competition("laliga", 140, "La Liga", "Spain"),
+    Competition("bundesliga", 78, "Bundesliga", "Germany"),
 )
 
 _http = requests.Session()
@@ -88,15 +93,13 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
             )
         ]
         fixtures.extend(normalized)
-        provider = "v2" if competition.app_id == "laliga" else "v1"
-        provider_league_id: int | str = (
-            LALIGA_V2_LEAGUE_ID if competition.app_id == "laliga" else competition.api_league_id
-        )
+        provider_league_id = V2_LEAGUE_IDS.get(competition.app_id)
+        provider = "v2" if provider_league_id is not None else "v1"
         LOGGER.info(
             "Fetched competition: provider=%s app_id=%s api_league_id=%s season=%d raw=%d kept=%d",
             provider,
             competition.app_id,
-            provider_league_id,
+            provider_league_id or competition.api_league_id,
             season,
             len(raw_fixtures),
             len(normalized),
@@ -148,6 +151,15 @@ def _fetch_competition_fixtures(
         return _fetch_laliga_v2_competition_fixtures(
             api_key=api_key,
             competition=competition,
+            season=season,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    if competition.app_id == "bundesliga":
+        return _fetch_v2_fixture_pages(
+            api_key=api_key,
+            competition=competition,
+            league_id=V2_LEAGUE_IDS[competition.app_id],
             season=season,
             from_date=from_date,
             to_date=to_date,
@@ -204,8 +216,14 @@ def _fetch_v1_competition_fixtures(
         page = current_page + 1
 
 
-def _fetch_laliga_v2_competition_fixtures(
-    *, api_key: str, competition: Competition, season: int, from_date: date, to_date: date
+def _fetch_v2_fixture_pages(
+    *,
+    api_key: str,
+    competition: Competition,
+    league_id: str,
+    season: int,
+    from_date: date | None = None,
+    to_date: date | None = None,
 ) -> list[dict[str, Any]]:
     fixtures: list[dict[str, Any]] = []
     cursor: str | None = None
@@ -213,21 +231,27 @@ def _fetch_laliga_v2_competition_fixtures(
 
     while True:
         params: dict[str, Any] = {
-            "league": LALIGA_V2_LEAGUE_ID,
+            "league": league_id,
             "season": season,
         }
+        if from_date is not None:
+            params["from"] = from_date.isoformat()
+        if to_date is not None:
+            params["to"] = to_date.isoformat()
         if cursor is not None:
             params["cursor"] = cursor
 
         payload = _get_api_json("/api/v2/fixtures", api_key=api_key, params=params)
         data = payload.get("data")
         if not isinstance(data, list):
-            raise FixtureDataError("KickoffAPI v2 response is missing a data list for laliga")
+            raise FixtureDataError(
+                f"KickoffAPI v2 response is missing a data list for {competition.app_id}"
+            )
         fixtures.extend(data)
 
         meta = payload.get("meta")
         if not isinstance(meta, dict):
-            raise FixtureDataError("KickoffAPI v2 response is missing meta for laliga")
+            raise FixtureDataError(f"KickoffAPI v2 response is missing meta for {competition.app_id}")
         next_cursor = meta.get("nextCursor")
         LOGGER.info(
             "Raw KickoffAPI v2 fixtures: app_id=%s cursor=%s count=%d next_cursor=%s",
@@ -237,13 +261,26 @@ def _fetch_laliga_v2_competition_fixtures(
             next_cursor,
         )
         if next_cursor in (None, ""):
-            break
+            return fixtures
 
         next_cursor_string = str(next_cursor)
         if next_cursor_string in seen_cursors:
-            raise FixtureDataError(f"KickoffAPI v2 cursor repeated for laliga: {next_cursor_string}")
+            raise FixtureDataError(
+                f"KickoffAPI v2 cursor repeated for {competition.app_id}: {next_cursor_string}"
+            )
         seen_cursors.add(next_cursor_string)
         cursor = next_cursor_string
+
+
+def _fetch_laliga_v2_competition_fixtures(
+    *, api_key: str, competition: Competition, season: int, from_date: date, to_date: date
+) -> list[dict[str, Any]]:
+    fixtures = _fetch_v2_fixture_pages(
+        api_key=api_key,
+        competition=competition,
+        league_id=V2_LEAGUE_IDS[competition.app_id],
+        season=season,
+    )
 
     try:
         selected = select_canonical_fixtures(
@@ -351,10 +388,12 @@ def _normalize_team_logo(team: dict[str, Any]) -> str | None:
 
 
 def _normalized_team(
-    raw_team: dict[str, Any], *, team_name: str, team_id: str
+    raw_team: dict[str, Any], *, team_name: str, team_id: str, competition_id: str
 ) -> dict[str, str]:
     team = {"id": team_id, "name": team_name}
-    logo = _normalize_team_logo(raw_team)
+    logo = get_static_team_logo(competition_id, team_name) if competition_id == "bundesliga" else None
+    if logo is None:
+        logo = _normalize_team_logo(raw_team)
     if logo is not None:
         team["logo"] = logo
     return team
@@ -421,8 +460,18 @@ def _normalize_fixture(
             "name": competition.name,
             "country": competition.country,
         },
-        "home": _normalized_team(home, team_name=home_name, team_id=home_id),
-        "away": _normalized_team(away, team_name=away_name, team_id=away_id),
+        "home": _normalized_team(
+            home,
+            team_name=home_name,
+            team_id=home_id,
+            competition_id=competition.app_id,
+        ),
+        "away": _normalized_team(
+            away,
+            team_name=away_name,
+            team_id=away_id,
+            competition_id=competition.app_id,
+        ),
         "kickoff": _utc_iso(kickoff),
         "status": _normalize_status(status_value),
         "score": score,
