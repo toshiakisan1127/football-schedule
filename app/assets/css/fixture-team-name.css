@@ -1,6 +1,28 @@
 .matchup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.team-name {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.team-logo {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  object-fit: contain;
+}
+
+.versus {
+  margin: 0 1px;
 }

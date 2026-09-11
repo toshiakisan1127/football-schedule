@@ -45,6 +45,13 @@ const japanesePlayersTitle = (name: string) => {
   return players.length > 0 ? `日本人選手: ${players.join('、')}` : undefined
 }
 
+const handleTeamLogoError = (event: Event) => {
+  const target = event.currentTarget
+  if (target instanceof HTMLImageElement) {
+    target.hidden = true
+  }
+}
+
 const dateFilters: { value: DateFilter; label: string }[] = [
   { value: 'all', label: '全日程' },
   { value: 'today', label: '今日' },
@@ -523,9 +530,35 @@ onUnmounted(() => {
                 {{ fixture.competition.country }} · {{ fixture.competition.name }}
               </p>
               <p class="matchup">
-                <span :title="japanesePlayersTitle(fixture.home.name)">{{ teamDisplayName(fixture.home.name) }}</span>
+                <span class="team-name" :title="japanesePlayersTitle(fixture.home.name)">
+                  <img
+                    v-if="fixture.home.logo"
+                    class="team-logo"
+                    :src="fixture.home.logo"
+                    :alt="`${fixture.home.name} ロゴ`"
+                    width="18"
+                    height="18"
+                    loading="lazy"
+                    decoding="async"
+                    @error="handleTeamLogoError"
+                  >
+                  <span>{{ teamDisplayName(fixture.home.name) }}</span>
+                </span>
                 <span class="versus">vs</span>
-                <span :title="japanesePlayersTitle(fixture.away.name)">{{ teamDisplayName(fixture.away.name) }}</span>
+                <span class="team-name" :title="japanesePlayersTitle(fixture.away.name)">
+                  <img
+                    v-if="fixture.away.logo"
+                    class="team-logo"
+                    :src="fixture.away.logo"
+                    :alt="`${fixture.away.name} ロゴ`"
+                    width="18"
+                    height="18"
+                    loading="lazy"
+                    decoding="async"
+                    @error="handleTeamLogoError"
+                  >
+                  <span>{{ teamDisplayName(fixture.away.name) }}</span>
+                </span>
               </p>
             </div>
 
