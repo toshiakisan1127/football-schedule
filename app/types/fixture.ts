@@ -39,10 +39,3 @@ export interface FixtureDocument {
   range: FixtureRange
   fixtures: Fixture[]
 }
-
-export interface LegacyFixtureDocument {
-  schemaVersion: 1
-  generatedAt: string
-  range: FixtureRange
-  fixtures: Fixture[]
-}
