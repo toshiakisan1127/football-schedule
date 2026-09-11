@@ -84,7 +84,7 @@ def test_canonical_team_logo_is_not_overwritten_by_sibling() -> None:
     assert selected[0]["home"]["logo"] == "https://images.kickoffapi.com/canonical-villarreal.png"
 
 
-def test_backfilled_v2_logo_reaches_normalized_fixture() -> None:
+def test_normalization_prefers_static_logo_after_v2_backfill() -> None:
     canonical = _fixture(
         fixture_id="canonical",
         kickoff="2026-09-14T19:00:00.000Z",
@@ -105,5 +105,9 @@ def test_backfilled_v2_logo_reaches_normalized_fixture() -> None:
     )[0]
     normalized = handler._normalize_fixture(selected, handler.COMPETITIONS[1])
 
-    assert normalized["home"]["logo"].endswith("villarreal.png?format=webp")
-    assert normalized["away"]["logo"].endswith("betis.png?format=webp")
+    assert normalized["home"]["logo"] == (
+        "https://images.kickoffapi.com/images/logos/533.png?format=webp"
+    )
+    assert normalized["away"]["logo"] == (
+        "https://images.kickoffapi.com/images/logos/543.png?format=webp"
+    )

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { Fixture, FixtureDocument } from './types/fixture'
+import type { Fixture } from './types/fixture'
 import { japanesePlayersForTeam } from './data/japanesePlayers'
+import { useFixtureDocuments } from './composables/useFixtureDocuments'
 
 type DateFilter = 'all' | 'today' | 'tomorrow' | 'weekend'
 type Theme = 'light' | 'dark'
@@ -18,12 +19,12 @@ const baseURL = runtimeConfig.app.baseURL.endsWith('/')
   ? runtimeConfig.app.baseURL
   : `${runtimeConfig.app.baseURL}/`
 
-const fixturesUrl = `${baseURL}data/fixtures.json`
-
-const { data, status, error } = await useFetch<FixtureDocument>(fixturesUrl, {
-  server: false,
-  cache: 'no-store',
-})
+const {
+  documents: fixtureDocuments,
+  data,
+  status,
+  error,
+} = await useFixtureDocuments(baseURL)
 
 const selectedFilter = ref<DateFilter>('all')
 const selectedCompetitions = ref<Set<string>>(new Set())
@@ -333,7 +334,15 @@ const groupedFixtures = computed(() => {
 })
 
 const generatedAtLabel = computed(() => {
-  if (!data.value?.generatedAt) return null
+  const documents = fixtureDocuments.value ?? []
+  const visibleDocuments = selectedCompetitions.value.size > 0
+    ? documents.filter((document) => selectedCompetitions.value.has(document.competition.id))
+    : documents
+  const oldestGeneratedAt = visibleDocuments
+    .map((document) => document.generatedAt)
+    .sort()[0]
+
+  if (!oldestGeneratedAt) return null
 
   return new Intl.DateTimeFormat('ja-JP', {
     timeZone: FIXTURE_TIME_ZONE,
@@ -341,7 +350,7 @@ const generatedAtLabel = computed(() => {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(data.value.generatedAt))
+  }).format(new Date(oldestGeneratedAt))
 })
 
 const emptyMessage = computed(() => {
