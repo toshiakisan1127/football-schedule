@@ -18,6 +18,16 @@ const JAPANESE_TEAMS: readonly JapaneseTeam[] = [
   { aliases: ['Liverpool'], players: ['遠藤航'] },
   { aliases: ['Real Sociedad', 'Real Sociedad de Fútbol', 'Real Sociedad de Futbol'], players: ['久保建英'] },
   { aliases: ['Valencia', 'Valencia CF', 'Valencia Club de Fútbol', 'Valencia Club de Futbol'], players: ['佐藤龍之介'] },
+  { aliases: ['Bayern München', 'Bayern Munich', 'FC Bayern München'], players: ['伊藤洋輝'] },
+  { aliases: ['Eintracht Frankfurt'], players: ['堂安律', '小杉啓太', '神代慶人'] },
+  {
+    aliases: ['Borussia Mönchengladbach', 'Borussia Monchengladbach'],
+    players: ['板倉滉', '町野修斗', '橋岡大樹', '宇野禅斗'],
+  },
+  { aliases: ['FSV Mainz 05', '1. FSV Mainz 05', 'Mainz 05'], players: ['佐野海舟', '川﨑颯太'] },
+  { aliases: ['SC Freiburg', 'Sport-Club Freiburg'], players: ['鈴木唯人', '山本理仁', '後藤啓介'] },
+  { aliases: ['1899 Hoffenheim', 'TSG Hoffenheim'], players: ['町田浩樹'] },
+  { aliases: ['FC Schalke 04', 'Schalke 04'], players: ['田中聡'] },
 ]
 
 const normalizeTeamName = (name: string) =>
