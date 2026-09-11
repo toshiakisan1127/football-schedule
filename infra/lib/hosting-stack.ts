@@ -64,6 +64,9 @@ export class HostingStack extends Stack {
       })),
     })
 
+    const cfnDistribution = this.distribution.node.defaultChild as cloudfront.CfnDistribution
+    cfnDistribution.addPropertyDeletionOverride('DistributionConfig.PriceClass')
+
     // The account already has the standard GitHub Actions OIDC provider.
     // Reference it here rather than owning it in another application stack.
     const githubOidcProvider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
