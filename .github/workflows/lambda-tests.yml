@@ -32,7 +32,9 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: infra/lambda/fixture-fetcher/requirements-dev.txt
+          cache-dependency-path: |
+            infra/lambda/fixture-fetcher/requirements.txt
+            infra/lambda/fixture-fetcher/requirements-dev.txt
 
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
@@ -52,12 +54,12 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: |
-            package.json
-            infra/package.json
+          cache-dependency-path: infra/package.json
 
-      - name: Install dependencies
+      - name: Install CDK dependencies
+        working-directory: infra
         run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Typecheck CDK
-        run: npm --workspace infra run typecheck
+        working-directory: infra
+        run: npm run typecheck
