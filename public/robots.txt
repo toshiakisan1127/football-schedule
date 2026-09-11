@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /data/
+
+Sitemap: https://dus59dgj79li1.cloudfront.net/sitemap.xml
