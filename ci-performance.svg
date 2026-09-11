@@ -5,7 +5,7 @@
 <text x="32" y="38" font-size="21" font-weight="600" fill="#1f2328" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">CI performance</text>
 <text x="32" y="61" font-size="12" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Latest up to 30 successful main runs · workflow duration in seconds</text>
 <text x="32" y="104" font-size="17" font-weight="600" fill="#1f2328" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Lambda tests</text>
-<text x="872" y="104" text-anchor="end" font-size="13" font-weight="600" fill="#8250df" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Latest 30s · #39</text>
+<text x="872" y="104" text-anchor="end" font-size="13" font-weight="600" fill="#8250df" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Latest 31s · #41</text>
 <line x1="70" y1="329.0" x2="872" y2="329.0" stroke="#d8dee4" stroke-width="1"/>
 <text x="60" y="333.0" text-anchor="end" font-size="11" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">0s</text>
 <line x1="70" y1="282.8" x2="872" y2="282.8" stroke="#d8dee4" stroke-width="1"/>
@@ -17,31 +17,30 @@
 <line x1="70" y1="144.0" x2="872" y2="144.0" stroke="#d8dee4" stroke-width="1"/>
 <text x="60" y="148.0" text-anchor="end" font-size="11" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">120s</text>
 <text x="70.0" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#3</text>
-<text x="176.9" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#8</text>
-<text x="283.9" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#12</text>
-<text x="390.8" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#17</text>
-<text x="497.7" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#21</text>
-<text x="604.7" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#25</text>
-<text x="711.6" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#30</text>
-<text x="818.5" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#37</text>
-<text x="872.0" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#39</text>
-<polyline points="70.0,241.1 123.5,241.1 176.9,227.2 230.4,235.0 283.9,216.5 337.3,244.2 390.8,239.6 444.3,236.5 497.7,272.0 551.2,276.6 604.7,270.4 658.1,272.0 711.6,279.7 765.1,265.8 818.5,222.6 872.0,282.8" fill="none" stroke="#8250df" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="220.4" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#10</text>
+<text x="370.8" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#17</text>
+<text x="521.1" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#23</text>
+<text x="671.5" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#30</text>
+<text x="821.9" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#39</text>
+<text x="872.0" y="353" text-anchor="middle" font-size="10" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">#41</text>
+<polyline points="70.0,241.1 120.1,241.1 170.2,227.2 220.4,235.0 270.5,216.5 320.6,244.2 370.8,239.6 420.9,236.5 471.0,272.0 521.1,276.6 571.2,270.4 621.4,272.0 671.5,279.7 721.6,265.8 771.8,222.6 821.9,282.8 872.0,281.2" fill="none" stroke="#8250df" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="70.0" cy="241.1" r="3.3" fill="#8250df"/>
-<circle cx="123.5" cy="241.1" r="3.3" fill="#8250df"/>
-<circle cx="176.9" cy="227.2" r="3.3" fill="#8250df"/>
-<circle cx="230.4" cy="235.0" r="3.3" fill="#8250df"/>
-<circle cx="283.9" cy="216.5" r="3.3" fill="#8250df"/>
-<circle cx="337.3" cy="244.2" r="3.3" fill="#8250df"/>
-<circle cx="390.8" cy="239.6" r="3.3" fill="#8250df"/>
-<circle cx="444.3" cy="236.5" r="3.3" fill="#8250df"/>
-<circle cx="497.7" cy="272.0" r="3.3" fill="#8250df"/>
-<circle cx="551.2" cy="276.6" r="3.3" fill="#8250df"/>
-<circle cx="604.7" cy="270.4" r="3.3" fill="#8250df"/>
-<circle cx="658.1" cy="272.0" r="3.3" fill="#8250df"/>
-<circle cx="711.6" cy="279.7" r="3.3" fill="#8250df"/>
-<circle cx="765.1" cy="265.8" r="3.3" fill="#8250df"/>
-<circle cx="818.5" cy="222.6" r="3.3" fill="#8250df"/>
-<circle cx="872.0" cy="282.8" r="3.3" fill="#8250df"/>
+<circle cx="120.1" cy="241.1" r="3.3" fill="#8250df"/>
+<circle cx="170.2" cy="227.2" r="3.3" fill="#8250df"/>
+<circle cx="220.4" cy="235.0" r="3.3" fill="#8250df"/>
+<circle cx="270.5" cy="216.5" r="3.3" fill="#8250df"/>
+<circle cx="320.6" cy="244.2" r="3.3" fill="#8250df"/>
+<circle cx="370.8" cy="239.6" r="3.3" fill="#8250df"/>
+<circle cx="420.9" cy="236.5" r="3.3" fill="#8250df"/>
+<circle cx="471.0" cy="272.0" r="3.3" fill="#8250df"/>
+<circle cx="521.1" cy="276.6" r="3.3" fill="#8250df"/>
+<circle cx="571.2" cy="270.4" r="3.3" fill="#8250df"/>
+<circle cx="621.4" cy="272.0" r="3.3" fill="#8250df"/>
+<circle cx="671.5" cy="279.7" r="3.3" fill="#8250df"/>
+<circle cx="721.6" cy="265.8" r="3.3" fill="#8250df"/>
+<circle cx="771.8" cy="222.6" r="3.3" fill="#8250df"/>
+<circle cx="821.9" cy="282.8" r="3.3" fill="#8250df"/>
+<circle cx="872.0" cy="281.2" r="3.3" fill="#8250df"/>
 <text x="32" y="382" font-size="17" font-weight="600" fill="#1f2328" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Deploy AWS infrastructure</text>
 <text x="872" y="382" text-anchor="end" font-size="13" font-weight="600" fill="#0969da" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Latest 2m 59s · #24</text>
 <line x1="70" y1="607.0" x2="872" y2="607.0" stroke="#d8dee4" stroke-width="1"/>
@@ -79,5 +78,5 @@
 <circle cx="771.8" cy="462.1" r="3.3" fill="#0969da"/>
 <circle cx="821.9" cy="507.3" r="3.3" fill="#0969da"/>
 <circle cx="872.0" cy="515.0" r="3.3" fill="#0969da"/>
-<text x="876" y="634" text-anchor="end" font-size="10" fill="#8c959f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Updated 2026-09-11 02:49 UTC</text>
+<text x="876" y="634" text-anchor="end" font-size="10" fill="#8c959f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Updated 2026-09-11 03:04 UTC</text>
 </svg>
