@@ -42,11 +42,33 @@ def raw_fixture(
     }
 
 
+def raw_v2_fixture(
+    *,
+    fixture_id: str,
+    kickoff: str,
+    time: str | None,
+    home_id: str | None = "tm_home",
+    away_id: str | None = "tm_away",
+) -> dict:
+    return {
+        "id": fixture_id,
+        "date": kickoff,
+        "time": time,
+        "status": {"long": "Not Started", "short": "NS", "elapsed": None},
+        "league": {"id": "lg_laliga", "name": "La Liga", "season": 2026},
+        "home": {"id": home_id, "name": "Sevilla FC"},
+        "away": {"id": away_id, "name": "Valencia CF"},
+        "score": None,
+        "round": "Matchday 5",
+        "source": "owned",
+    }
+
+
 def competition() -> handler.Competition:
     return handler.COMPETITIONS[0]
 
 
-def test_mvp_fetches_premier_league_and_laliga_v1() -> None:
+def test_mvp_fetches_premier_league_and_laliga() -> None:
     assert [
         (item.app_id, item.api_league_id, item.name, item.country)
         for item in handler.COMPETITIONS
@@ -54,6 +76,7 @@ def test_mvp_fetches_premier_league_and_laliga_v1() -> None:
         ("epl", 39, "Premier League", "England"),
         ("laliga", 140, "La Liga", "Spain"),
     ]
+    assert handler.LALIGA_V2_LEAGUE_ID == "es.1"
 
 
 @pytest.mark.parametrize(
@@ -113,6 +136,21 @@ def test_normalize_fixture_accepts_flat_v1_docs_example() -> None:
     assert normalized["kickoff"] == "2026-09-12T06:00:00Z"
     assert normalized["status"] == "finished"
     assert normalized["score"] == {"home": 0, "away": 3}
+
+
+def test_normalize_fixture_accepts_v2_score_shape() -> None:
+    raw = raw_v2_fixture(
+        fixture_id="fx_1",
+        kickoff="2026-09-11T19:00:00Z",
+        time=None,
+    )
+    raw["score"] = {"home": 2, "away": 1}
+
+    normalized = handler._normalize_fixture(raw, handler.COMPETITIONS[1])
+
+    assert normalized["kickoff"] == "2026-09-11T19:00:00Z"
+    assert normalized["status"] == "scheduled"
+    assert normalized["score"] == {"home": 2, "away": 1}
 
 
 def test_live_score_is_preserved_in_json_data() -> None:
@@ -197,22 +235,40 @@ def test_fetch_competition_fixtures_uses_v1_range_and_paging(
     assert calls[1]["params"]["page"] == 2
 
 
-def test_fetch_competition_fixtures_uses_laliga_league_id(
+def test_fetch_competition_fixtures_uses_laliga_v2_cursor_paging(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: dict = {}
+    calls: list[dict] = []
 
     def fake_get_api_json(path: str, *, api_key: str, params: dict) -> dict:
-        captured.update({"path": path, "api_key": api_key, "params": params.copy()})
+        calls.append({"path": path, "api_key": api_key, "params": params.copy()})
+        if "cursor" not in params:
+            return {
+                "data": [
+                    raw_v2_fixture(
+                        fixture_id="fx_canonical",
+                        kickoff="2026-09-11T19:00:00.000Z",
+                        time=None,
+                        away_id=None,
+                    )
+                ],
+                "meta": {"count": 1, "cursor": 0, "nextCursor": "200"},
+            }
         return {
-            "response": [],
-            "results": 0,
-            "paging": {"current": 1, "total": 1},
+            "data": [
+                raw_v2_fixture(
+                    fixture_id="fx_wall_clock",
+                    kickoff="2026-09-11T21:00:00.000Z",
+                    time="21:00",
+                    away_id="tm_valencia",
+                )
+            ],
+            "meta": {"count": 1, "cursor": 200, "nextCursor": None},
         }
 
     monkeypatch.setattr(handler, "_get_api_json", fake_get_api_json)
 
-    handler._fetch_competition_fixtures(
+    fixtures = handler._fetch_competition_fixtures(
         api_key="secret",
         competition=handler.COMPETITIONS[1],
         season=2026,
@@ -220,9 +276,12 @@ def test_fetch_competition_fixtures_uses_laliga_league_id(
         to_date=date(2026, 10, 11),
     )
 
-    assert captured["path"] == "/api/v1/fixtures"
-    assert captured["params"]["league"] == 140
-    assert captured["params"]["season"] == 2026
+    assert len(fixtures) == 1
+    assert fixtures[0]["id"] == "fx_canonical"
+    assert fixtures[0]["away"]["id"] == "tm_valencia"
+    assert [call["path"] for call in calls] == ["/api/v2/fixtures", "/api/v2/fixtures"]
+    assert calls[0]["params"] == {"league": "es.1", "season": 2026}
+    assert calls[1]["params"] == {"league": "es.1", "season": 2026, "cursor": "200"}
 
 
 def test_fetch_competition_fixtures_rejects_missing_v1_response(
