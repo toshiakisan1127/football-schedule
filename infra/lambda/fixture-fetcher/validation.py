@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 SCHEMA_VERSION = 1
@@ -140,10 +141,20 @@ def _parse_datetime(value: str, path: str) -> datetime:
 def _validate_team(value: Any, path: str) -> tuple[str, str]:
     if not isinstance(value, dict):
         raise FixtureDocumentValidationError(f"{path} must be an object")
+    if "logo" in value:
+        _validate_http_url(value["logo"], f"{path}.logo")
     return (
         _required_string(value, "id", path),
         _required_string(value, "name", path),
     )
+
+
+def _validate_http_url(value: Any, path: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise FixtureDocumentValidationError(f"{path} must be a non-empty string")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise FixtureDocumentValidationError(f"{path} must be an HTTP(S) URL")
 
 
 def _remember_team(
