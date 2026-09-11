@@ -110,5 +110,20 @@ TEAM_LOGOS: dict[str, dict[str, str]] = {
 }
 
 
+TEAM_LOGO_ALIASES: dict[str, dict[str, str]] = {
+    "bundesliga": {
+        "1. FC Union Berlin": "Union Berlin",
+        "TSG 1899 Hoffenheim": "1899 Hoffenheim",
+        "1. FSV Mainz 05": "FSV Mainz 05",
+        "Bayer 04 Leverkusen": "Bayer Leverkusen",
+        "SV Werder Bremen": "Werder Bremen",
+        "SV 07 Elversberg": "SV Elversberg",
+        "FC Bayern München": "Bayern München",
+    },
+}
+
+
 def get_static_team_logo(competition_id: str, team_name: str) -> str | None:
-    return TEAM_LOGOS.get(competition_id, {}).get(team_name)
+    teams = TEAM_LOGOS.get(competition_id, {})
+    canonical_name = TEAM_LOGO_ALIASES.get(competition_id, {}).get(team_name, team_name)
+    return teams.get(canonical_name)
