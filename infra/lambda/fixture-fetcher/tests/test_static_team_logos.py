@@ -52,6 +52,23 @@ def test_static_logo_snapshot_has_expected_known_teams() -> None:
     )
 
 
+def test_bundesliga_v2_team_name_aliases_resolve_static_logos() -> None:
+    aliases = {
+        "1. FC Union Berlin": 182,
+        "TSG 1899 Hoffenheim": 167,
+        "1. FSV Mainz 05": 164,
+        "Bayer 04 Leverkusen": 168,
+        "SV Werder Bremen": 162,
+        "SV 07 Elversberg": 1660,
+        "FC Bayern München": 157,
+    }
+
+    for team_name, logo_id in aliases.items():
+        assert get_static_team_logo("bundesliga", team_name) == (
+            f"https://images.kickoffapi.com/images/logos/{logo_id}.png?format=webp"
+        )
+
+
 def test_laliga_v2_uses_static_logo_when_provider_omits_it() -> None:
     canonical = _fixture(
         fixture_id="fx_canonical",
