@@ -42,14 +42,6 @@ export class HostingStack extends Stack {
     const siteOrigin = origins.S3BucketOrigin.withOriginAccessControl(this.siteBucket)
     const dataOrigin = origins.S3BucketOrigin.withOriginAccessControl(this.dataBucket)
 
-    const fixtureDataCachePolicy = new cloudfront.CachePolicy(this, 'FixtureDataCachePolicy', {
-      defaultTtl: Duration.minutes(5),
-      minTtl: Duration.seconds(0),
-      maxTtl: Duration.minutes(15),
-      enableAcceptEncodingBrotli: true,
-      enableAcceptEncodingGzip: true,
-    })
-
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultRootObject: 'index.html',
       defaultBehavior: {
@@ -61,7 +53,7 @@ export class HostingStack extends Stack {
         'data/*': {
           origin: dataOrigin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: fixtureDataCachePolicy,
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         },
       },
       errorResponses: [403, 404].map((httpStatus) => ({
@@ -71,6 +63,9 @@ export class HostingStack extends Stack {
         ttl: Duration.seconds(0),
       })),
     })
+
+    const cfnDistribution = this.distribution.node.defaultChild as cloudfront.CfnDistribution
+    cfnDistribution.addPropertyDeletionOverride('DistributionConfig.PriceClass')
 
     // The account already has the standard GitHub Actions OIDC provider.
     // Reference it here rather than owning it in another application stack.
