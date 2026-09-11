@@ -12,10 +12,15 @@ from validation import SCHEMA_VERSION, FixtureDocumentValidationError, validate_
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
+LIGUE1_COMPETITION = legacy.Competition("ligue1", 61, "Ligue 1", "France")
+COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION)
+LIGUE1_V2_LEAGUE_ID = "fr.1"
+
 OBJECT_FILENAMES = {
     "epl": "premier-league.json",
     "laliga": "laliga.json",
     "bundesliga": "bundesliga.json",
+    "ligue1": "ligue1.json",
 }
 
 
@@ -91,7 +96,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
 
 def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competition, ...]:
     if not isinstance(event, dict) or "competitions" not in event:
-        return legacy.COMPETITIONS
+        return COMPETITIONS
 
     raw = event.get("competitions")
     if not isinstance(raw, list) or not raw:
@@ -99,7 +104,7 @@ def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competi
     if any(not isinstance(item, str) or not item.strip() for item in raw):
         raise legacy.FixtureDataError("competitions must contain non-empty competition IDs")
 
-    configured = {competition.app_id: competition for competition in legacy.COMPETITIONS}
+    configured = {competition.app_id: competition for competition in COMPETITIONS}
     selected: list[legacy.Competition] = []
     seen: set[str] = set()
 
@@ -116,6 +121,33 @@ def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competi
     return tuple(selected)
 
 
+def _fetch_competition_fixtures(
+    *,
+    api_key: str,
+    competition: legacy.Competition,
+    season: int,
+    from_date: Any,
+    to_date: Any,
+) -> list[dict[str, Any]]:
+    if competition.app_id == "ligue1":
+        return legacy._fetch_v2_fixture_pages(
+            api_key=api_key,
+            competition=competition,
+            league_id=LIGUE1_V2_LEAGUE_ID,
+            season=season,
+            from_date=from_date,
+            to_date=to_date,
+        )
+
+    return legacy._fetch_competition_fixtures(
+        api_key=api_key,
+        competition=competition,
+        season=season,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+
 def _build_competition_document(
     *,
     api_key: str,
@@ -124,7 +156,7 @@ def _build_competition_document(
     from_date: Any,
     to_date: Any,
 ) -> dict[str, Any]:
-    raw_fixtures = legacy._fetch_competition_fixtures(
+    raw_fixtures = _fetch_competition_fixtures(
         api_key=api_key,
         competition=competition,
         season=season,
