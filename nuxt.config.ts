@@ -1,12 +1,12 @@
 import tailwindcss from '@tailwindcss/vite'
 
 const siteUrl = 'https://dus59dgj79li1.cloudfront.net/'
-const siteTitle = 'サッカー試合日程 | Football Schedule'
-const siteDescription = 'プレミアリーグ・ラ・リーガの試合日程を日本時間で見やすく確認できるアプリ。見たいチームの試合時間をすぐ確認できます。'
+const siteTitle = 'サッカー試合日程｜プレミアリーグ・ラ・リーガを日本時間で確認'
+const siteDescription = 'プレミアリーグとラ・リーガの試合日程を日本時間で見やすく確認。今日・明日・今週末や好きなチーム、日本人選手所属チームで絞り込める無料のサッカー日程アプリ。'
 const ogImageUrl = new URL('og-image.svg', siteUrl).toString()
 
 export default defineNuxtConfig({
-  ssr: false,
+  ssr: true,
   devtools: { enabled: true },
   modules: ['@vite-pwa/nuxt'],
   css: [
@@ -26,6 +26,10 @@ export default defineNuxtConfig({
         {
           name: 'description',
           content: siteDescription,
+        },
+        {
+          name: 'robots',
+          content: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
         },
         { property: 'og:title', content: siteTitle },
         { property: 'og:description', content: siteDescription },
@@ -48,9 +52,26 @@ export default defineNuxtConfig({
         { name: 'apple-mobile-web-app-title', content: 'サッカー日程' },
       ],
       link: [
+        { rel: 'canonical', href: siteUrl },
         { rel: 'manifest', href: '/manifest.webmanifest' },
         { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+      ],
+      script: [
+        {
+          type: 'application/ld+json',
+          innerHTML: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'WebApplication',
+            name: 'サッカー試合日程',
+            url: siteUrl,
+            description: siteDescription,
+            applicationCategory: 'SportsApplication',
+            operatingSystem: 'Any',
+            inLanguage: 'ja-JP',
+            isAccessibleForFree: true,
+          }),
+        },
       ],
     },
   },
@@ -61,7 +82,7 @@ export default defineNuxtConfig({
       id: '/',
       name: 'サッカー試合日程',
       short_name: 'サッカー日程',
-      description: 'サッカーの試合日程を日本時間で見やすく確認できるアプリ。',
+      description: 'プレミアリーグとラ・リーガの試合日程を日本時間で見やすく確認できるアプリ。',
       lang: 'ja',
       start_url: '/',
       scope: '/',
