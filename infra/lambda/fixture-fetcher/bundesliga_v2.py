@@ -23,7 +23,9 @@ def select_canonical_fixtures(
     KickoffAPI v2 can expose a canonical UTC record together with a sibling
     whose Berlin wall-clock time is stored as though it were UTC. Single-record
     groups are preserved. Duplicate groups are only collapsed when exactly one
-    candidate is verified by that Berlin wall-clock relationship.
+    candidate is verified by that Berlin wall-clock relationship. Unresolved
+    duplicate groups are preserved to avoid dropping fixtures on a provider-side
+    shape change.
     """
 
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -60,13 +62,14 @@ def select_canonical_fixtures(
             )
 
         LOGGER.warning(
-            "Skipping unresolved Bundesliga v2 duplicate fixture: "
+            "Preserving unresolved Bundesliga v2 duplicate fixture: "
             "home=%r away=%r round=%r candidates=%r",
             key[0],
             key[1],
             key[2],
             _diagnostics(relevant),
         )
+        selected.extend(relevant)
 
     return selected
 
