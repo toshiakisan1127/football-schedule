@@ -26,6 +26,7 @@ LIVE_STATUSES = {"1h", "ht", "2h", "et", "bt", "p", "live"}
 FINISHED_STATUSES = {"ft", "aet", "pen", "awd", "wo", "finished"}
 POSTPONED_STATUSES = {"pst", "susp", "int", "postponed"}
 CANCELLED_STATUSES = {"canc", "abd", "cancelled", "canceled"}
+TEAM_LOGO_KEYS = ("logo", "image", "crest")
 
 
 @dataclass(frozen=True)
@@ -341,6 +342,24 @@ def _normalize_team_id(raw_id: Any, team_name: str, team_ids: dict[str, str] | N
     return f"team-name-{digest}"
 
 
+def _normalize_team_logo(team: dict[str, Any]) -> str | None:
+    for key in TEAM_LOGO_KEYS:
+        value = team.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _normalized_team(
+    raw_team: dict[str, Any], *, team_name: str, team_id: str
+) -> dict[str, str]:
+    team = {"id": team_id, "name": team_name}
+    logo = _normalize_team_logo(raw_team)
+    if logo is not None:
+        team["logo"] = logo
+    return team
+
+
 def _normalize_fixture(
     raw: dict[str, Any], competition: Competition, *, team_ids: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -402,8 +421,8 @@ def _normalize_fixture(
             "name": competition.name,
             "country": competition.country,
         },
-        "home": {"id": home_id, "name": home_name},
-        "away": {"id": away_id, "name": away_name},
+        "home": _normalized_team(home, team_name=home_name, team_id=home_id),
+        "away": _normalized_team(away, team_name=away_name, team_id=away_id),
         "kickoff": _utc_iso(kickoff),
         "status": _normalize_status(status_value),
         "score": score,
