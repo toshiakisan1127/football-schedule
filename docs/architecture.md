@@ -37,9 +37,11 @@ EventBridge Scheduler
         v
 Fixture Fetcher Lambda
         |
-        +--> KickoffAPI v2
+        +--> Premier League: KickoffAPI v1
         |
-        +--> validate all responses
+        +--> La Liga: KickoffAPI v2
+        |
+        +--> provider-specific validation / canonical selection
         |
         +--> normalize / JST window filter
         |
@@ -52,6 +54,8 @@ CloudFront
         v
 Nuxt client
 ```
+
+Provider差分はLambda内に閉じ込める。Premier Leagueは安定しているv1、La Ligaは1か月先まで取得できるv2を使い、v2固有の重複候補は検証済みルールでcanonical rowを選択する。詳細は [`data-source.md`](data-source.md) と [`kickoffapi-laliga-v2-validation.md`](kickoffapi-laliga-v2-validation.md) を参照する。
 
 ## Normalized fixture schema
 
@@ -110,11 +114,11 @@ data/
 
 ## Refresh strategy
 
-- EventBridge Schedulerから6時間おきにLambdaを実行する想定
-- 現時点ではSchedulerは `DISABLED` のままにし、手動検証後に有効化する
+- EventBridge Schedulerから6時間おきにLambdaを実行する
 - 前日から今後30日程度を公開対象とする
-- KickoffAPIにも `from` / `to` を渡すが、providerが範囲外を返す場合に備えてLambda側でもJSTでfilterする
-- 全対象大会の取得・検証が成功した場合のみS3を更新する
+- Premier League v1には `from` / `to` を渡す
+- La Liga v2は観測上date rangeを信用できないためcursorで取得し、Lambda側のJST windowを最終境界とする
+- 全対象大会の取得・provider-specific検証・document validationが成功した場合のみS3を更新する
 - 失敗時は既存の正常な `fixtures.json` を保持する
 - CloudFrontではJSONのキャッシュTTLを短めに設定する
 
@@ -148,9 +152,10 @@ localStorage
 ## Failure handling
 
 1. 外部APIの一部取得に失敗した場合は、その実行では公開JSONを更新しない
-2. Lambdaは失敗をログへ残す
-3. フロントは `generatedAt` を表示し、データ鮮度を利用者が判断できるようにする
-4. 不正な日時・未知のstatusなどは正規化時に弾く
+2. La Liga v2のcanonical rowを一意に選択できない場合も公開JSONを更新しない
+3. Lambdaは失敗をログへ残す
+4. フロントは `generatedAt` を表示し、データ鮮度を利用者が判断できるようにする
+5. 不正な日時・未知のstatusなどは正規化時に弾く
 
 ## Security
 
