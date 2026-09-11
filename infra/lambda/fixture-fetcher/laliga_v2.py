@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 JST = ZoneInfo("Asia/Tokyo")
 MADRID = ZoneInfo("Europe/Madrid")
 LOGGER = logging.getLogger(__name__)
+TEAM_ASSET_KEYS = ("logo", "image", "crest")
 
 
 class LaLigaV2SelectionError(RuntimeError):
@@ -65,7 +66,7 @@ def select_canonical_fixtures(
                 f"selected={len(matches)} candidates={_diagnostics(candidates)!r}"
             )
 
-        selected.append(_backfill_team_ids(matches[0], candidates))
+        selected.append(_backfill_team_metadata(matches[0], candidates))
 
     return selected
 
@@ -129,27 +130,46 @@ def _has_madrid_wall_clock_sibling(
     return False
 
 
-def _backfill_team_ids(
+def _backfill_team_metadata(
     selected: dict[str, Any], candidates: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    """Preserve stable provider team IDs even when the canonical row has null IDs."""
+    """Preserve stable team IDs and available assets from sibling v2 rows."""
 
     result = dict(selected)
     for side in ("home", "away"):
         selected_team = selected.get(side)
         if not isinstance(selected_team, dict):
             continue
+
         team = dict(selected_team)
+        matching_siblings = [
+            sibling_team
+            for candidate in candidates
+            if isinstance((sibling_team := candidate.get(side)), dict)
+            and sibling_team.get("name") == team.get("name")
+        ]
+
         if team.get("id") in (None, ""):
-            for candidate in candidates:
-                sibling_team = candidate.get(side)
-                if not isinstance(sibling_team, dict):
-                    continue
-                if sibling_team.get("name") != team.get("name"):
-                    continue
+            for sibling_team in matching_siblings:
                 if sibling_team.get("id") not in (None, ""):
                     team["id"] = sibling_team["id"]
                     break
+
+        if not any(
+            isinstance(team.get(key), str) and team[key].strip()
+            for key in TEAM_ASSET_KEYS
+        ):
+            for sibling_team in matching_siblings:
+                copied = False
+                for key in TEAM_ASSET_KEYS:
+                    value = sibling_team.get(key)
+                    if isinstance(value, str) and value.strip():
+                        team[key] = value.strip()
+                        copied = True
+                        break
+                if copied:
+                    break
+
         result[side] = team
     return result
 
