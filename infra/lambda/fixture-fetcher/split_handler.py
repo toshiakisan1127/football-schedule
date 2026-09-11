@@ -13,7 +13,8 @@ LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
 LIGUE1_COMPETITION = legacy.Competition("ligue1", 61, "Ligue 1", "France")
-COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION)
+UEL_COMPETITION = legacy.Competition("uel", 3, "UEFA Europa League", "Europe")
+COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION, UEL_COMPETITION)
 LIGUE1_V2_LEAGUE_ID = "fr.1"
 
 OBJECT_FILENAMES = {
@@ -21,6 +22,7 @@ OBJECT_FILENAMES = {
     "laliga": "laliga.json",
     "bundesliga": "bundesliga.json",
     "ligue1": "ligue1.json",
+    "uel": "europa-league.json",
 }
 
 
