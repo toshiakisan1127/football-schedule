@@ -6,6 +6,8 @@ from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from team_logos import get_static_team_logo
+
 JST = ZoneInfo("Asia/Tokyo")
 MADRID = ZoneInfo("Europe/Madrid")
 LOGGER = logging.getLogger(__name__)
@@ -133,7 +135,7 @@ def _has_madrid_wall_clock_sibling(
 def _backfill_team_metadata(
     selected: dict[str, Any], candidates: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    """Preserve stable team IDs and available assets from sibling v2 rows."""
+    """Preserve team metadata, then use the static v1 logo snapshot as fallback."""
 
     result = dict(selected)
     for side in ("home", "away"):
@@ -155,10 +157,7 @@ def _backfill_team_metadata(
                     team["id"] = sibling_team["id"]
                     break
 
-        if not any(
-            isinstance(team.get(key), str) and team[key].strip()
-            for key in TEAM_ASSET_KEYS
-        ):
+        if not _has_team_asset(team):
             for sibling_team in matching_siblings:
                 copied = False
                 for key in TEAM_ASSET_KEYS:
@@ -170,8 +169,22 @@ def _backfill_team_metadata(
                 if copied:
                     break
 
+        if not _has_team_asset(team):
+            team_name = team.get("name")
+            if isinstance(team_name, str):
+                static_logo = get_static_team_logo("laliga", team_name)
+                if static_logo is not None:
+                    team["logo"] = static_logo
+
         result[side] = team
     return result
+
+
+def _has_team_asset(team: dict[str, Any]) -> bool:
+    return any(
+        isinstance(team.get(key), str) and team[key].strip()
+        for key in TEAM_ASSET_KEYS
+    )
 
 
 def _parse_datetime(value: str) -> datetime:
