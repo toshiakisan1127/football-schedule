@@ -26,6 +26,7 @@ def test_static_logo_snapshot_covers_supported_leagues() -> None:
     assert len(TEAM_LOGOS["epl"]) == 20
     assert len(TEAM_LOGOS["laliga"]) == 20
     assert len(TEAM_LOGOS["bundesliga"]) == 18
+    assert isinstance(TEAM_LOGOS["ligue1"], dict)
 
 
 def test_static_logo_snapshot_has_expected_known_teams() -> None:
