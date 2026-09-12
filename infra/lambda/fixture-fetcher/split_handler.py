@@ -7,12 +7,8 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from api_football import fetch_j1_fixtures, fetch_premier_league_fixtures
+from api_football import fetch_fixtures, fetch_j1_fixtures
 import handler as legacy
-from ligue1_v2 import (
-    Ligue1V2SelectionError,
-    select_canonical_fixtures as select_ligue1_canonical_fixtures,
-)
 from validation import SCHEMA_VERSION, FixtureDocumentValidationError, validate_fixture_document
 
 LOGGER = logging.getLogger()
@@ -21,8 +17,6 @@ LOGGER.setLevel(logging.INFO)
 LIGUE1_COMPETITION = legacy.Competition("ligue1", 61, "Ligue 1", "France")
 J1_COMPETITION = legacy.Competition("j1", 98, "J1 League", "Japan")
 COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION, J1_COMPETITION)
-LIGUE1_V2_LEAGUE_ID = "fr.1"
-API_FOOTBALL_COMPETITION_IDS = {"epl", "j1"}
 
 OBJECT_FILENAMES = {
     "epl": "premier-league.json",
@@ -37,7 +31,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     bucket_name = legacy._required_env("DATA_BUCKET_NAME")
     object_prefix = os.getenv("FIXTURE_OBJECT_PREFIX", "data/fixtures").strip("/")
     lookback_days = legacy._non_negative_int_env("LOOKBACK_DAYS", 1)
-    lookahead_days = legacy._non_negative_int_env("LOOKAHEAD_DAYS", 14)
+    lookahead_days = legacy._non_negative_int_env("LOOKAHEAD_DAYS", 21)
     competitions = _selected_competitions(event)
 
     today_jst = datetime.now(legacy.JST).date()
@@ -46,31 +40,23 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     season = legacy._season_for(today_jst)
 
     LOGGER.info(
-        "Starting split fixture refresh: from=%s to=%s season=%d competitions=%s",
+        "Starting split fixture refresh: provider=API-Football from=%s to=%s season=%d competitions=%s",
         from_date,
         to_date,
         season,
         ",".join(competition.app_id for competition in competitions),
     )
 
-    kickoff_api_key = _load_kickoff_api_key(competitions)
-    api_football_api_key = _load_api_football_key(competitions)
+    api_football_api_key = _load_api_football_key()
     published: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
 
     for competition in competitions:
         provider = _provider_name(competition)
-        api_key = (
-            api_football_api_key
-            if competition.app_id in API_FOOTBALL_COMPETITION_IDS
-            else kickoff_api_key
-        )
-        if api_key is None:
-            raise legacy.FixtureDataError(f"No API key loaded for provider {provider}")
 
         try:
             document = _build_competition_document(
-                api_key=api_key,
+                api_key=api_football_api_key,
                 competition=competition,
                 season=season,
                 from_date=from_date,
@@ -159,32 +145,13 @@ def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competi
     return tuple(selected)
 
 
-def _load_kickoff_api_key(competitions: tuple[legacy.Competition, ...]) -> str | None:
-    if not any(
-        competition.app_id not in API_FOOTBALL_COMPETITION_IDS
-        for competition in competitions
-    ):
-        return None
-    parameter_name = legacy._required_env("API_KEY_PARAMETER_NAME")
-    return legacy._load_api_key(parameter_name)
-
-
-def _load_api_football_key(competitions: tuple[legacy.Competition, ...]) -> str | None:
-    if not any(
-        competition.app_id in API_FOOTBALL_COMPETITION_IDS
-        for competition in competitions
-    ):
-        return None
+def _load_api_football_key() -> str:
     parameter_name = legacy._required_env("API_FOOTBALL_KEY_PARAMETER_NAME")
     return legacy._load_api_key(parameter_name)
 
 
 def _provider_name(competition: legacy.Competition) -> str:
-    return (
-        "API-Football"
-        if competition.app_id in API_FOOTBALL_COMPETITION_IDS
-        else "KickoffAPI"
-    )
+    return "API-Football"
 
 
 def _fetch_competition_fixtures(
@@ -195,20 +162,6 @@ def _fetch_competition_fixtures(
     from_date: Any,
     to_date: Any,
 ) -> list[dict[str, Any]]:
-    if competition.app_id == "epl":
-        fixtures = fetch_premier_league_fixtures(
-            api_key=api_key,
-            season=season,
-            from_date=from_date,
-            to_date=to_date,
-        )
-        LOGGER.info(
-            "Fetched API-Football Premier League fixtures: season=%d fetched=%d",
-            season,
-            len(fixtures),
-        )
-        return fixtures
-
     if competition.app_id == "j1":
         fixtures = fetch_j1_fixtures(
             api_key=api_key,
@@ -221,40 +174,22 @@ def _fetch_competition_fixtures(
         )
         return fixtures
 
-    if competition.app_id == "ligue1":
-        fixtures = legacy._fetch_v2_fixture_pages(
-            api_key=api_key,
-            competition=competition,
-            league_id=LIGUE1_V2_LEAGUE_ID,
-            season=season,
-            from_date=from_date,
-            to_date=to_date,
-        )
-        try:
-            selected = select_ligue1_canonical_fixtures(
-                fixtures,
-                from_date=from_date,
-                to_date=to_date,
-            )
-        except Ligue1V2SelectionError as exc:
-            raise legacy.FixtureDataError(
-                f"Ligue 1 v2 canonical fixture selection failed: {exc}"
-            ) from exc
-        LOGGER.info(
-            "Selected canonical Ligue 1 v2 fixtures: season=%d fetched=%d selected=%d",
-            season,
-            len(fixtures),
-            len(selected),
-        )
-        return selected
-
-    return legacy._fetch_competition_fixtures(
+    fixtures = fetch_fixtures(
         api_key=api_key,
-        competition=competition,
+        league_id=competition.api_league_id,
         season=season,
         from_date=from_date,
         to_date=to_date,
+        competition_label=competition.name,
     )
+    LOGGER.info(
+        "Fetched API-Football fixtures: app_id=%s league=%d season=%d fetched=%d",
+        competition.app_id,
+        competition.api_league_id,
+        season,
+        len(fixtures),
+    )
+    return fixtures
 
 
 def _normalize_provider_fixture(
@@ -264,8 +199,6 @@ def _normalize_provider_fixture(
     team_ids: dict[str, str],
 ) -> dict[str, Any]:
     fixture = legacy._normalize_fixture(item, competition, team_ids=team_ids)
-    if competition.app_id not in API_FOOTBALL_COMPETITION_IDS:
-        return fixture
 
     raw_home, raw_away = legacy._raw_teams(item)
     for side, raw_team in (("home", raw_home), ("away", raw_away)):
