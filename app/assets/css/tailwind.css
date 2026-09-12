@@ -11,4 +11,30 @@
   .theme-toggle {
     width: 4rem;
   }
+
+  .header-copy {
+    display: contents;
+  }
+
+  .header-copy .eyebrow {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .header-copy h1 {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .header-meta {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .header-copy .subtitle {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    max-width: none !important;
+    white-space: nowrap;
+  }
 }
