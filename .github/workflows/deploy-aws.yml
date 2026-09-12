@@ -68,7 +68,7 @@ jobs:
           npx cdk diff \
             --app cdk.out \
             FootballScheduleHostingStack FootballScheduleDataStack \
-            --method=change-set \
+            --method=direct \
             --fail \
             --no-color \
             2>&1 | tee cdk-diff.txt
