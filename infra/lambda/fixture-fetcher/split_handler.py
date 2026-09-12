@@ -16,7 +16,20 @@ LOGGER.setLevel(logging.INFO)
 
 LIGUE1_COMPETITION = legacy.Competition("ligue1", 61, "Ligue 1", "France")
 J1_COMPETITION = legacy.Competition("j1", 98, "J1 League", "Japan")
-COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION, J1_COMPETITION)
+UCL_COMPETITION = legacy.Competition("ucl", 2, "UEFA Champions League", "Europe")
+UEL_COMPETITION = legacy.Competition("uel", 3, "UEFA Europa League", "Europe")
+UECL_COMPETITION = legacy.Competition("uecl", 848, "UEFA Conference League", "Europe")
+COMPETITIONS = (
+    *legacy.COMPETITIONS,
+    LIGUE1_COMPETITION,
+    J1_COMPETITION,
+    UCL_COMPETITION,
+    UEL_COMPETITION,
+    UECL_COMPETITION,
+)
+
+UEFA_COMPETITION_IDS = frozenset({"ucl", "uel", "uecl"})
+UEFA_LOOKAHEAD_DAYS = 35
 
 OBJECT_FILENAMES = {
     "epl": "premier-league.json",
@@ -24,6 +37,9 @@ OBJECT_FILENAMES = {
     "bundesliga": "bundesliga.json",
     "ligue1": "ligue1.json",
     "j1": "j1.json",
+    "ucl": "champions-league.json",
+    "uel": "europa-league.json",
+    "uecl": "conference-league.json",
 }
 
 
@@ -36,13 +52,13 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
 
     today_jst = datetime.now(legacy.JST).date()
     from_date = today_jst - timedelta(days=lookback_days)
-    to_date = today_jst + timedelta(days=lookahead_days)
     season = legacy._season_for(today_jst)
 
     LOGGER.info(
-        "Starting split fixture refresh: provider=API-Football from=%s to=%s season=%d competitions=%s",
+        "Starting split fixture refresh: provider=API-Football from=%s domestic_lookahead_days=%d uefa_lookahead_days=%d season=%d competitions=%s",
         from_date,
-        to_date,
+        lookahead_days,
+        UEFA_LOOKAHEAD_DAYS,
         season,
         ",".join(competition.app_id for competition in competitions),
     )
@@ -50,9 +66,16 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     api_football_api_key = _load_api_football_key()
     published: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
+    max_to_date = from_date
 
     for competition in competitions:
         provider = _provider_name(competition)
+        competition_lookahead_days = _lookahead_days_for(
+            competition,
+            default_days=lookahead_days,
+        )
+        to_date = today_jst + timedelta(days=competition_lookahead_days)
+        max_to_date = max(max_to_date, to_date)
 
         try:
             document = _build_competition_document(
@@ -70,16 +93,19 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
                     "competition": competition.app_id,
                     "objectKey": object_key,
                     "fixtureCount": len(document["fixtures"]),
+                    "range": document["range"],
                 }
             )
             LOGGER.info(
-                "Published competition fixture document: app_id=%s provider=%s bucket=%s key=%s fixtures=%d bytes=%d",
+                "Published competition fixture document: app_id=%s provider=%s bucket=%s key=%s fixtures=%d bytes=%d range=%s..%s",
                 competition.app_id,
                 provider,
                 bucket_name,
                 object_key,
                 len(document["fixtures"]),
                 len(body),
+                document["range"]["from"],
+                document["range"]["to"],
             )
         except Exception as exc:
             LOGGER.warning(
@@ -112,10 +138,20 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         "ok": True,
         "published": True,
         "schemaVersion": SCHEMA_VERSION,
-        "range": {"from": from_date.isoformat(), "to": to_date.isoformat()},
+        "range": {"from": from_date.isoformat(), "to": max_to_date.isoformat()},
         "fixtureCount": sum(item["fixtureCount"] for item in published),
         "competitions": published,
     }
+
+
+def _lookahead_days_for(
+    competition: legacy.Competition,
+    *,
+    default_days: int,
+) -> int:
+    if competition.app_id in UEFA_COMPETITION_IDS:
+        return UEFA_LOOKAHEAD_DAYS
+    return default_days
 
 
 def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competition, ...]:
