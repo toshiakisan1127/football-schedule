@@ -5,6 +5,7 @@ import type {
   LiveFixtureEvent,
   LiveFixtureSnapshot,
 } from '../types/fixture'
+import { j1LiveEventTeamName, j1TeamName } from '../data/j1TeamNames'
 
 const FIXTURE_SOURCES = [
   { id: 'epl', file: 'premier-league.json' },
@@ -22,6 +23,25 @@ const LIVE_IDLE_REFRESH_INTERVAL_MS = 5 * 60_000
 
 const sortDocuments = (documents: FixtureDocument[]) =>
   [...documents].sort((a, b) => a.competition.id.localeCompare(b.competition.id))
+
+const localizeJ1TeamNames = (document: FixtureDocument): FixtureDocument => {
+  if (document.competition.id !== 'j1') return document
+
+  return {
+    ...document,
+    fixtures: document.fixtures.map((fixture) => ({
+      ...fixture,
+      home: {
+        ...fixture.home,
+        name: j1TeamName(fixture.home.id, fixture.home.name),
+      },
+      away: {
+        ...fixture.away,
+        name: j1TeamName(fixture.away.id, fixture.away.name),
+      },
+    })),
+  }
+}
 
 const hideLiveStatus = (document: FixtureDocument): FixtureDocument => ({
   ...document,
@@ -97,6 +117,13 @@ const mergeLiveFixture = (
   const live = liveFixtures.get(fixture.id)
   if (!live || live.competitionId !== fixture.competition.id) return fixture
 
+  const events = fixture.competition.id === 'j1'
+    ? live.events.map((event) => ({
+        ...event,
+        teamName: j1LiveEventTeamName(event.teamId, event.teamName),
+      }))
+    : live.events
+
   return {
     ...fixture,
     status: 'live',
@@ -105,7 +132,7 @@ const mergeLiveFixture = (
       period: live.period,
       elapsed: live.elapsed,
       extra: live.extra,
-      events: live.events,
+      events,
     },
   }
 }
@@ -123,7 +150,7 @@ export const useFixtureDocuments = async (baseURL: string) => {
             throw new Error(`Invalid fixture document: ${source.id}`)
           }
 
-          return hideLiveStatus(value)
+          return hideLiveStatus(localizeJ1TeamNames(value))
         }),
       )
 
