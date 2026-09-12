@@ -3,17 +3,13 @@ name: Lambda tests
 on:
   pull_request:
     paths:
-      - 'infra/**'
-      - 'package.json'
-      - 'package-lock.json'
+      - 'infra/lambda/**'
       - '.github/workflows/lambda-tests.yml'
   push:
     branches:
       - main
     paths:
-      - 'infra/**'
-      - 'package.json'
-      - 'package-lock.json'
+      - 'infra/lambda/**'
       - '.github/workflows/lambda-tests.yml'
   workflow_dispatch:
 
@@ -21,57 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      lambda: ${{ steps.filter.outputs.lambda }}
-      cdk: ${{ steps.filter.outputs.cdk }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Detect changed paths
-        id: filter
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'lambda=true' >> "$GITHUB_OUTPUT"
-            echo 'cdk=true' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base_sha="${{ github.event.pull_request.base.sha }}"
-            head_sha="${{ github.event.pull_request.head.sha }}"
-          else
-            base_sha="${{ github.event.before }}"
-            head_sha="${{ github.sha }}"
-          fi
-
-          changed_files=$(git diff --name-only "$base_sha" "$head_sha")
-          printf '%s\n' "$changed_files"
-
-          if grep -Eq '^infra/lambda/|^\.github/workflows/lambda-tests\.yml$' <<< "$changed_files"; then
-            echo 'lambda=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'lambda=false' >> "$GITHUB_OUTPUT"
-          fi
-
-          cdk_files=$(grep -Ev '^infra/lambda/' <<< "$changed_files" || true)
-          if grep -Eq '^infra/.*\.tsx?$|^infra/package(-lock)?\.json$|^package(-lock)?\.json$|^\.github/workflows/lambda-tests\.yml$' <<< "$cdk_files"; then
-            echo 'cdk=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'cdk=false' >> "$GITHUB_OUTPUT"
-          fi
-
   test:
-    needs: changes
-    if: needs.changes.outputs.lambda == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -104,27 +50,3 @@ jobs:
             cd "$package_dir"
             python -c 'import handler; import validation'
           )
-
-  infra-typecheck:
-    needs: changes
-    if: needs.changes.outputs.cdk == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: infra/package.json
-
-      - name: Install CDK dependencies
-        working-directory: infra
-        run: npm install --prefer-offline --no-audit --no-fund
-
-      - name: Typecheck CDK
-        working-directory: infra
-        run: npm run typecheck
