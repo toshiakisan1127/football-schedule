@@ -39,7 +39,11 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Run tests
+      - name: Run fixture fetcher tests
+        run: python -m pytest -q
+
+      - name: Run error notifier tests
+        working-directory: infra/lambda/error-notifier
         run: python -m pytest -q
 
       - name: Verify deploy package imports
