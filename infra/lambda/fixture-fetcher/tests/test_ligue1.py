@@ -193,7 +193,7 @@ def test_ligue1_v2_team_names_resolve_all_static_logos() -> None:
 
     assert all(_get_static_ligue1_logo(team_name) is not None for team_name in v2_team_names)
     assert _get_static_ligue1_logo("Paris Saint-Germain FC") == (
-        "https://images.kickoffapi.com/images/logos/85.png?format=webp"
+        "https://media.api-sports.io/football/teams/85.png"
     )
 
 
