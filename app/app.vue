@@ -311,8 +311,13 @@ const resultLabel = (fixture: Fixture) => {
 
 const isLiveExpanded = (fixture: Fixture) => expandedLiveFixtures.value.has(fixture.id)
 
+const hasLiveEvents = (fixture: Fixture) =>
+  fixture.status === 'live' && Boolean(fixture.live?.events.length)
+
+const isLiveExpandable = (fixture: Fixture) => showResults.value && hasLiveEvents(fixture)
+
 const toggleLiveFixture = (fixture: Fixture) => {
-  if (!showResults.value || fixture.status !== 'live' || !fixture.live) return
+  if (!isLiveExpandable(fixture)) return
   const next = new Set(expandedLiveFixtures.value)
   if (next.has(fixture.id)) {
     next.delete(fixture.id)
@@ -713,9 +718,9 @@ onUnmounted(() => {
             :key="fixture.id"
             class="fixture-row"
             :class="{ 'fixture-row--live': fixture.status === 'live' }"
-            :role="fixture.status === 'live' && showResults ? 'button' : undefined"
-            :tabindex="fixture.status === 'live' && showResults ? 0 : undefined"
-            :aria-expanded="fixture.status === 'live' && showResults ? isLiveExpanded(fixture) : undefined"
+            :role="isLiveExpandable(fixture) ? 'button' : undefined"
+            :tabindex="isLiveExpandable(fixture) ? 0 : undefined"
+            :aria-expanded="isLiveExpandable(fixture) ? isLiveExpanded(fixture) : undefined"
             @click="toggleLiveFixture(fixture)"
             @keydown.enter.prevent="toggleLiveFixture(fixture)"
             @keydown.space.prevent="toggleLiveFixture(fixture)"
@@ -775,8 +780,8 @@ onUnmounted(() => {
             </div>
 
             <LiveFixtureEvents
-              v-if="showResults && fixture.status === 'live' && fixture.live && isLiveExpanded(fixture)"
-              :events="fixture.live.events"
+              v-if="isLiveExpandable(fixture) && isLiveExpanded(fixture)"
+              :events="fixture.live!.events"
             />
           </div>
         </div>
