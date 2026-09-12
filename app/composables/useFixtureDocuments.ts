@@ -11,6 +11,15 @@ const FIXTURE_SOURCES = [
 const sortDocuments = (documents: FixtureDocument[]) =>
   [...documents].sort((a, b) => a.competition.id.localeCompare(b.competition.id))
 
+const hideLiveStatus = (document: FixtureDocument): FixtureDocument => ({
+  ...document,
+  fixtures: document.fixtures.map((fixture) =>
+    fixture.status === 'live'
+      ? { ...fixture, status: 'scheduled' }
+      : fixture,
+  ),
+})
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -47,7 +56,7 @@ export const useFixtureDocuments = async (baseURL: string) => {
             throw new Error(`Invalid fixture document: ${source.id}`)
           }
 
-          return value
+          return hideLiveStatus(value)
         }),
       )
 
