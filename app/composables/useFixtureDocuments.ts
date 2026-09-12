@@ -17,7 +17,7 @@ const FIXTURE_SOURCES = [
   { id: 'uecl', file: 'conference-league.json' },
 ] as const
 
-const LIVE_REFRESH_INTERVAL_MS = 60_000
+const LIVE_REFRESH_INTERVAL_MS = 3 * 60_000
 
 const sortDocuments = (documents: FixtureDocument[]) =>
   [...documents].sort((a, b) => a.competition.id.localeCompare(b.competition.id))
