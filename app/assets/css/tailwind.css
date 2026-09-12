@@ -1,3 +1,8 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+
+.theme-toggle {
+  width: 4.75rem;
+  white-space: nowrap;
+}
