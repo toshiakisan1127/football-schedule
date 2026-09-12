@@ -33,7 +33,7 @@ const JAPANESE_TEAMS: readonly JapaneseTeam[] = [
     aliases: ['LE Havre', 'Le Havre', 'Le Havre AC', 'Havre AC'],
     players: ['瀬古歩夢', '中村草太', '水多海斗'],
   },
-  { aliases: ['Lille', 'LOSC', 'LOSC Lille'], players: ['上田綺世'] },
+  { aliases: ['Lille', 'Lille OSC', 'LOSC', 'LOSC Lille'], players: ['上田綺世'] },
   { aliases: ['Lyon', 'Olympique Lyonnais', 'Olympique Lyon'], players: ['中村敬斗'] },
 ]
 
