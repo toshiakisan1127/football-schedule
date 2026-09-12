@@ -228,6 +228,27 @@ def _fetch_competition_fixtures(
     )
 
 
+def _normalize_provider_fixture(
+    item: dict[str, Any],
+    competition: legacy.Competition,
+    *,
+    team_ids: dict[str, str],
+) -> dict[str, Any]:
+    fixture = legacy._normalize_fixture(item, competition, team_ids=team_ids)
+    if competition.app_id != "j1":
+        return fixture
+
+    raw_home, raw_away = legacy._raw_teams(item)
+    for side, raw_team in (("home", raw_home), ("away", raw_away)):
+        if not isinstance(raw_team, dict):
+            continue
+        provider_logo = legacy._normalize_team_logo(raw_team)
+        if provider_logo is not None:
+            fixture[side]["logo"] = provider_logo
+
+    return fixture
+
+
 def _build_competition_document(
     *,
     api_key: str,
@@ -248,7 +269,7 @@ def _build_competition_document(
         fixture
         for item in raw_fixtures
         if legacy._fixture_in_window(
-            fixture := legacy._normalize_fixture(item, competition, team_ids=team_ids),
+            fixture := _normalize_provider_fixture(item, competition, team_ids=team_ids),
             from_date=from_date,
             to_date=to_date,
         )
