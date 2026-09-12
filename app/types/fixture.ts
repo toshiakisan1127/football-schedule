@@ -74,5 +74,6 @@ export interface LiveFixtureSnapshot {
 export interface LiveFixtureDocument {
   schemaVersion: 1
   generatedAt: string
+  expiresAt: string
   fixtures: LiveFixtureSnapshot[]
 }
