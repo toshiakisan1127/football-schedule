@@ -35,6 +35,7 @@ mainブランチで直近に完了したWorkflowの実行時間です。Workflow
 - La Liga
 - Bundesliga
 - Ligue 1
+- J1 League
 
 主な機能:
 
@@ -58,7 +59,7 @@ UEFA Champions League、Europa League、Conference League、Serie Aなどを順�
 ```text
                                       +----------------------+
                                       | SSM SecureString     |
-                                      | KickoffAPI API key   |
+                                      | API-Football API key |
                                       +----------+-----------+
                                                  |
                                                  v
@@ -68,8 +69,8 @@ UEFA Champions League、Europa League、Conference League、Serie Aなどを順�
 +----------------------+                          |
                                                  v
                                       +-----------------------+
-                                      | KickoffAPI            |
-                                      | provider adapters     |
+                                      | API-Football v3       |
+                                      | /fixtures             |
                                       +-----------+-----------+
                                                   |
                                       normalize / JST filter
@@ -113,11 +114,13 @@ SNS Topic
 Alert email
 ```
 
-フロントエンドからKickoffAPIを直接呼びません。Lambdaが毎日05:00 JSTに日程を取得し、provider差分を吸収してアプリ独自のJSON形式へ正規化・検証したうえで、リーグごとのJSONをS3へ保存します。ブラウザはCloudFront経由で静的サイトと `data/fixtures/*.json` を読むだけです。
+フロントエンドからAPI-Footballを直接呼びません。Lambdaが毎日05:00 JSTに日程を取得し、アプリ独自のJSON形式へ正規化・検証したうえで、リーグごとのJSONをS3へ保存します。ブラウザはCloudFront経由で静的サイトと `data/fixtures/*.json` を読むだけです。
 
-現在の取得範囲は**前日から30日先まで**です。大会ごとに取得・検証・publishするため、ある大会が失敗しても成功した大会は更新できます。失敗した大会は直前の正常なJSONを維持します。
+現在の取得範囲は**前日から21日先まで**です。大会ごとに取得・検証・publishするため、ある大会が失敗しても成功した大会は更新できます。失敗した大会は直前の正常なJSONを維持します。
 
-詳細は [`docs/architecture.md`](docs/architecture.md) と [`docs/data-source.md`](docs/data-source.md) を参照してください。La Liga v2の検証内容は [`docs/kickoffapi-laliga-v2-validation.md`](docs/kickoffapi-laliga-v2-validation.md) に残しています。
+21日先はデータ品質を優先したMVPの上限です。将来30日などへ伸ばす場合は、リーグごとにAPI-Footballの取得結果を公式日程と照合してから変更します。
+
+詳細は [`docs/architecture.md`](docs/architecture.md) と [`docs/data-source.md`](docs/data-source.md) を参照してください。以前のLa Liga / KickoffAPI v2の検証内容は [`docs/kickoffapi-laliga-v2-validation.md`](docs/kickoffapi-laliga-v2-validation.md) に履歴として残しています。
 
 ## デプロイ
 
@@ -163,8 +166,8 @@ Fixture Fetcher LambdaはJSON形式でCloudWatch Logsへ出力し、`level = ERR
 - Amazon EventBridge Scheduler
 - AWS Systems Manager Parameter Store
 - GitHub Actions / OIDC
-- KickoffAPI v1 / v2
+- API-Football v3
 
 ## Status
 
-Premier League / La Liga / Bundesliga / Ligue 1の日程取得・公開まで稼働中。機能追加と運用改善を継続しています。
+Premier League / La Liga / Bundesliga / Ligue 1 / J1 Leagueの日程取得・公開まで稼働中。機能追加と運用改善を継続しています。
