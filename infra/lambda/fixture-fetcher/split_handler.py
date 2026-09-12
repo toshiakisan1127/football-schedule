@@ -30,6 +30,7 @@ COMPETITIONS = (
 
 UEFA_COMPETITION_IDS = frozenset({"ucl", "uel", "uecl"})
 UEFA_LOOKAHEAD_DAYS = 35
+J1_LOOKAHEAD_DAYS = 100
 
 OBJECT_FILENAMES = {
     "epl": "premier-league.json",
@@ -55,9 +56,10 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     season = legacy._season_for(today_jst)
 
     LOGGER.info(
-        "Starting split fixture refresh: provider=API-Football from=%s domestic_lookahead_days=%d uefa_lookahead_days=%d season=%d competitions=%s",
+        "Starting split fixture refresh: provider=API-Football from=%s domestic_lookahead_days=%d j1_lookahead_days=%d uefa_lookahead_days=%d season=%d competitions=%s",
         from_date,
         lookahead_days,
+        J1_LOOKAHEAD_DAYS,
         UEFA_LOOKAHEAD_DAYS,
         season,
         ",".join(competition.app_id for competition in competitions),
@@ -149,6 +151,8 @@ def _lookahead_days_for(
     *,
     default_days: int,
 ) -> int:
+    if competition.app_id == "j1":
+        return J1_LOOKAHEAD_DAYS
     if competition.app_id in UEFA_COMPETITION_IDS:
         return UEFA_LOOKAHEAD_DAYS
     return default_days
