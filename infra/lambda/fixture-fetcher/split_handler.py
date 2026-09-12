@@ -7,6 +7,7 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from api_football import fetch_j1_fixtures
 import handler as legacy
 from ligue1_v2 import (
     Ligue1V2SelectionError,
@@ -18,7 +19,8 @@ LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
 LIGUE1_COMPETITION = legacy.Competition("ligue1", 61, "Ligue 1", "France")
-COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION)
+J1_COMPETITION = legacy.Competition("j1", 98, "J1 League", "Japan")
+COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION, J1_COMPETITION)
 LIGUE1_V2_LEAGUE_ID = "fr.1"
 
 OBJECT_FILENAMES = {
@@ -26,12 +28,12 @@ OBJECT_FILENAMES = {
     "laliga": "laliga.json",
     "bundesliga": "bundesliga.json",
     "ligue1": "ligue1.json",
+    "j1": "j1.json",
 }
 
 
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
     bucket_name = legacy._required_env("DATA_BUCKET_NAME")
-    parameter_name = legacy._required_env("API_KEY_PARAMETER_NAME")
     object_prefix = os.getenv("FIXTURE_OBJECT_PREFIX", "data/fixtures").strip("/")
     lookback_days = legacy._non_negative_int_env("LOOKBACK_DAYS", 1)
     lookahead_days = legacy._non_negative_int_env("LOOKAHEAD_DAYS", 14)
@@ -50,11 +52,17 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         ",".join(competition.app_id for competition in competitions),
     )
 
-    api_key = legacy._load_api_key(parameter_name)
+    kickoff_api_key = _load_kickoff_api_key(competitions)
+    api_football_api_key = _load_api_football_key(competitions)
     published: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
 
     for competition in competitions:
+        provider = _provider_name(competition)
+        api_key = api_football_api_key if competition.app_id == "j1" else kickoff_api_key
+        if api_key is None:
+            raise legacy.FixtureDataError(f"No API key loaded for provider {provider}")
+
         try:
             document = _build_competition_document(
                 api_key=api_key,
@@ -74,8 +82,9 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
                 }
             )
             LOGGER.info(
-                "Published competition fixture document: app_id=%s bucket=%s key=%s fixtures=%d bytes=%d",
+                "Published competition fixture document: app_id=%s provider=%s bucket=%s key=%s fixtures=%d bytes=%d",
                 competition.app_id,
+                provider,
                 bucket_name,
                 object_key,
                 len(document["fixtures"]),
@@ -83,19 +92,20 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
             )
         except Exception as exc:
             LOGGER.warning(
-                "Competition refresh failed: app_id=%s error_type=%s error=%s",
+                "Competition refresh failed: app_id=%s provider=%s error_type=%s error=%s",
                 competition.app_id,
+                provider,
                 type(exc).__name__,
                 exc,
             )
-            failures.append(_failure_detail(competition.app_id, exc))
+            failures.append(_failure_detail(competition.app_id, provider, exc))
 
     if failures:
         alert = {
             "level": "ERROR",
             "message": "Fixture refresh completed with failures",
             "requestId": getattr(context, "aws_request_id", None),
-            "provider": "KickoffAPI",
+            "provider": _summary_provider(failures),
             "failureCount": len(failures),
             "failedCompetitions": [failure["competition"] for failure in failures],
             "primaryCause": _primary_cause(failures),
@@ -144,6 +154,24 @@ def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competi
     return tuple(selected)
 
 
+def _load_kickoff_api_key(competitions: tuple[legacy.Competition, ...]) -> str | None:
+    if not any(competition.app_id != "j1" for competition in competitions):
+        return None
+    parameter_name = legacy._required_env("API_KEY_PARAMETER_NAME")
+    return legacy._load_api_key(parameter_name)
+
+
+def _load_api_football_key(competitions: tuple[legacy.Competition, ...]) -> str | None:
+    if not any(competition.app_id == "j1" for competition in competitions):
+        return None
+    parameter_name = legacy._required_env("API_FOOTBALL_KEY_PARAMETER_NAME")
+    return legacy._load_api_key(parameter_name)
+
+
+def _provider_name(competition: legacy.Competition) -> str:
+    return "API-Football" if competition.app_id == "j1" else "KickoffAPI"
+
+
 def _fetch_competition_fixtures(
     *,
     api_key: str,
@@ -152,6 +180,18 @@ def _fetch_competition_fixtures(
     from_date: Any,
     to_date: Any,
 ) -> list[dict[str, Any]]:
+    if competition.app_id == "j1":
+        fixtures = fetch_j1_fixtures(
+            api_key=api_key,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        LOGGER.info(
+            "Fetched API-Football J1 fixtures: fetched=%d",
+            len(fixtures),
+        )
+        return fixtures
+
     if competition.app_id == "ligue1":
         fixtures = legacy._fetch_v2_fixture_pages(
             api_key=api_key,
@@ -188,6 +228,27 @@ def _fetch_competition_fixtures(
     )
 
 
+def _normalize_provider_fixture(
+    item: dict[str, Any],
+    competition: legacy.Competition,
+    *,
+    team_ids: dict[str, str],
+) -> dict[str, Any]:
+    fixture = legacy._normalize_fixture(item, competition, team_ids=team_ids)
+    if competition.app_id != "j1":
+        return fixture
+
+    raw_home, raw_away = legacy._raw_teams(item)
+    for side, raw_team in (("home", raw_home), ("away", raw_away)):
+        if not isinstance(raw_team, dict):
+            continue
+        provider_logo = legacy._normalize_team_logo(raw_team)
+        if provider_logo is not None:
+            fixture[side]["logo"] = provider_logo
+
+    return fixture
+
+
 def _build_competition_document(
     *,
     api_key: str,
@@ -208,7 +269,7 @@ def _build_competition_document(
         fixture
         for item in raw_fixtures
         if legacy._fixture_in_window(
-            fixture := legacy._normalize_fixture(item, competition, team_ids=team_ids),
+            fixture := _normalize_provider_fixture(item, competition, team_ids=team_ids),
             from_date=from_date,
             to_date=to_date,
         )
@@ -261,10 +322,11 @@ def _object_key(prefix: str, competition_id: str) -> str:
     return f"{prefix}/{filename}" if prefix else filename
 
 
-def _failure_detail(competition_id: str, exc: Exception) -> dict[str, Any]:
+def _failure_detail(competition_id: str, provider: str, exc: Exception) -> dict[str, Any]:
     status_code = getattr(getattr(exc, "response", None), "status_code", None)
     return {
         "competition": competition_id,
+        "provider": provider,
         "errorType": type(exc).__name__,
         "errorMessage": str(exc),
         "statusCode": status_code,
@@ -272,14 +334,21 @@ def _failure_detail(competition_id: str, exc: Exception) -> dict[str, Any]:
     }
 
 
+def _summary_provider(failures: list[dict[str, Any]]) -> str:
+    providers = {str(failure.get("provider", "Unknown")) for failure in failures}
+    return next(iter(providers)) if len(providers) == 1 else "mixed"
+
+
 def _primary_cause(failures: list[dict[str, Any]]) -> str:
     status_codes = {failure.get("statusCode") for failure in failures}
+    provider = _summary_provider(failures)
+    provider_label = provider if provider != "mixed" else "Provider"
     if status_codes == {429}:
-        return "KickoffAPI rate limit exceeded (HTTP 429)"
+        return f"{provider_label} rate limit exceeded (HTTP 429)"
     if len(status_codes) == 1:
         status_code = next(iter(status_codes))
         if status_code is not None:
-            return f"KickoffAPI request failed (HTTP {status_code})"
+            return f"{provider_label} request failed (HTTP {status_code})"
 
     error_types = {str(failure.get("errorType", "UnknownError")) for failure in failures}
     if len(error_types) == 1:

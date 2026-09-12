@@ -1,15 +1,14 @@
 # Football data source
 
-The fixture fetcher publishes the application-owned JSON document consumed by the frontend. Provider handling is competition-specific because the currently observed KickoffAPI v1 and v2 behavior differs by league.
+The fixture fetcher publishes application-owned, league-specific JSON documents consumed by the frontend. Provider handling is competition-specific so upstream quirks stay inside the Lambda/provider layer and the frontend only sees the shared schema.
 
 ## Enabled competitions
 
 - Premier League (`epl` / KickoffAPI v1 league `39`)
 - La Liga (`laliga` / KickoffAPI v2 league `es.1`)
-
-UEFA Champions League is intentionally kept out of the current production feed and will be enabled separately after the two domestic leagues are verified in production.
-
-J1 League is intentionally excluded for now because KickoffAPI's current J1 catalog data is only available through the 2025 season and a `season=2026` fixture request returned no matches.
+- Bundesliga (`bundesliga` / KickoffAPI v2 league `de.1`)
+- Ligue 1 (`ligue1` / KickoffAPI v2 league `fr.1`)
+- J1 League (`j1` / API-Football v3 league `98`)
 
 Application competition IDs are stable app-owned slugs and do not depend on provider IDs.
 
@@ -17,47 +16,76 @@ Application competition IDs are stable app-owned slugs and do not depend on prov
 
 ### Premier League
 
-Premier League stays on KickoffAPI v1. The fetcher requests league `39` with season, `from`, and `to`, and follows `paging.current` / `paging.total` when multiple pages are returned.
+Premier League currently stays on KickoffAPI v1. The fetcher requests league `39` with season, `from`, and `to`, and follows `paging.current` / `paging.total` when multiple pages are returned.
 
-v1 is deprecated and is scheduled to sunset on 1 January 2027, so this is a temporary compatibility choice while the v2 feed is not yet reliable enough to replace it safely.
+v1 is deprecated and is scheduled to sunset on 1 January 2027, so migration to KickoffAPI v2 or another provider remains a separate task.
 
 ### La Liga
 
-La Liga uses KickoffAPI v2 with league `es.1` because the v1 feed did not expose the full one-month future window. In the 2026-09-11 validation, a v1 request through 2026-10-11 returned only 29 rows and stopped at 2026-09-20.
+La Liga uses KickoffAPI v2 with league `es.1`. The provider can expose multiple rows for the same home/away/Matchday combination, so the Lambda performs competition-specific canonical selection before normalization. See [`kickoffapi-laliga-v2-validation.md`](kickoffapi-laliga-v2-validation.md) for the validated selection strategy.
 
-The v2 feed contains the later fixtures but also exposes multiple rows for the same home/away/Matchday combination. The Lambda therefore:
+### Bundesliga and Ligue 1
 
-1. fetches v2 pages by following `meta.nextCursor`,
-2. groups rows by home team, away team, and Matchday,
-3. selects the canonical UTC record only when it has the verified `Europe/Madrid` wall-clock sibling pattern,
-4. fails closed if a relevant group resolves to zero or multiple canonical rows,
-5. normalizes the selected rows into the app-owned schema,
-6. applies the JST publication-window filter.
+Bundesliga and Ligue 1 use KickoffAPI v2. Both keep provider-specific canonical selection in the Lambda so duplicate, placeholder, or wall-clock rows are resolved before data reaches the frontend.
 
-The selection rule was cross-checked against all 24 v1 fixtures available in the validation window and selected the exact v1 kickoff for 24/24 fixtures with zero wrong or ambiguous selections. See [`kickoffapi-laliga-v2-validation.md`](kickoffapi-laliga-v2-validation.md) for the observations, rejected heuristics, validation output, and regression strategy.
+### J1 League
+
+J1 uses API-Football v3 because the current KickoffAPI feed does not provide the future 2026/27 J1 schedule needed by the app.
+
+- endpoint: `GET https://v3.football.api-sports.io/fixtures`
+- league: `98`
+- current 2026/27 season identifier: `2027`
+- authentication header: `x-apisports-key`
+- fixture window: provider `from` / `to`, followed by the app's JST range validation
+- pagination: follows `paging.current` / `paging.total`
+
+API-Football identifies the autumn-spring J1 season by its ending year, so dates in the second half of 2026 map to `season=2027`.
+
+The fixture response already includes team IDs, names, kickoff timestamps, status, scores, and team logo URLs. For J1, provider-specific normalization prefers the API-Football team logo when present; if it is missing, the existing static logo mapping remains as fallback. No additional logo request is required.
+
+Venue fields are intentionally not included in the application fixture schema. During source validation, some venue values were less reliable than the fixture date/team data, and venue display is not required for the current product.
+
+The exact curl commands, Free-plan restriction response, Pro response shape, and kickoff-time spot checks are recorded in [`api-football-j1-validation.md`](api-football-j1-validation.md).
 
 ## Publication window
 
 The Lambda publishes from the configured lookback through lookahead window, currently one day back through 30 days ahead.
 
-Provider-side range behavior is not trusted as the final boundary. Premier League v1 receives `from` / `to`; La Liga v2 is fetched using cursor pagination because its observed response ignored the requested date range. In both cases the Lambda filters normalized fixtures against the configured date window in JST before publishing.
+Provider-side range behavior is not trusted as the final boundary. After provider-specific normalization, every fixture is filtered against the configured date window in JST before publishing.
 
 ## Publishing rule
 
-The Lambda builds the complete document in memory first. Before `data/fixtures.json` is written to S3, the application-owned document is validated as schema version `1`.
+Each competition is built and validated independently before its league-specific S3 object is replaced.
 
-Validation covers the document range and timestamps, configured competition IDs, fixture/team identifiers and names, duplicate fixture IDs, home/away consistency, supported statuses, non-negative scores, JST range membership, and fixture ordering. If fetching, provider-specific canonical selection, normalization, or validation fails, S3 is not updated and the previous known-good object remains available to the frontend.
+Current outputs include:
 
-The frontend therefore consumes the S3 document as the validated read model and does not need to understand KickoffAPI's provider version or response shape.
+```text
+data/fixtures/premier-league.json
+data/fixtures/laliga.json
+data/fixtures/bundesliga.json
+data/fixtures/ligue1.json
+data/fixtures/j1.json
+```
+
+Validation covers document metadata and range, fixture/team identifiers and names, duplicate fixture IDs, home/away consistency, supported statuses, non-negative scores, kickoff timestamps, JST range membership, sorting, and optional team logo HTTP(S) URLs.
+
+If one competition fails fetching, provider-specific selection, normalization, or validation, its previous known-good S3 object remains untouched. Other competitions can still publish during the same Lambda invocation. Failures are then emitted as one aggregated ERROR summary with provider information.
+
+The frontend therefore consumes validated application-owned JSON and does not need to understand KickoffAPI or API-Football response shapes.
 
 ## Score policy
 
-KickoffAPI score data is retained in the JSON even while a match is live. The frontend decides whether to display it. This lets the data layer remain faithful to the provider without showing stale in-progress scores to users.
+Provider score data is retained in the JSON when available. The frontend decides whether to display it, including the existing result spoiler behavior.
 
-## Credential
+## Credentials
 
-The KickoffAPI key is stored as an SSM SecureString at `/football-schedule/kickoff-api-key`. It is never exposed to the frontend.
+Provider credentials are stored as SSM SecureStrings and are never exposed to the frontend.
+
+- KickoffAPI: `/football-schedule/kickoff-api-key`
+- API-Football Pro: `/football-schedule/api-football-pro-key`
+
+The FixtureFetcher Lambda receives only the parameter names through environment variables and has IAM read permission for both parameters.
 
 ## Tests
 
-`pytest` covers configured competition mappings, status mapping, v1 and v2 fixture shapes, UTC conversion, JST date-window filtering, score preservation, season selection, v1 page pagination, v2 cursor pagination, La Liga canonical-row selection, fail-closed behavior, API error handling, application document validation, and atomic multi-competition publishing.
+`pytest` covers provider routing, status mapping, v1/v2/API-Football fixture shapes, UTC conversion, JST date-window filtering, score/logo preservation, season selection, provider pagination, canonical-row selection, fail-closed behavior, API error handling, application document validation, manual single-competition refreshes, and partial-success multi-competition publishing.
