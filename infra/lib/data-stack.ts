@@ -1,4 +1,5 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib'
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as logs from 'aws-cdk-lib/aws-logs'
@@ -101,6 +102,16 @@ export class DataStack extends Stack {
       batchErrorTopic.addSubscription(new subscriptions.EmailSubscription(alertEmail))
     }
 
+    const alertStateTable = new dynamodb.Table(this, 'BatchErrorAlertStateTable', {
+      partitionKey: {
+        name: 'fingerprint',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'expiresAt',
+      removalPolicy: RemovalPolicy.DESTROY,
+    })
+
     const errorNotifier = new lambda.Function(this, 'BatchErrorNotifier', {
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: 'handler.lambda_handler',
@@ -109,10 +120,14 @@ export class DataStack extends Stack {
       timeout: Duration.seconds(30),
       environment: {
         ALERT_TOPIC_ARN: batchErrorTopic.topicArn,
+        ALERT_STATE_TABLE_NAME: alertStateTable.tableName,
+        ALERT_COOLDOWN_SECONDS: '21600',
+        ALERT_STATE_TTL_SECONDS: '86400',
       },
     })
 
     batchErrorTopic.grantPublish(errorNotifier)
+    alertStateTable.grantReadWriteData(errorNotifier)
 
     new logs.SubscriptionFilter(this, 'FixtureFetcherErrorSubscription', {
       logGroup: fixtureFetcherLogGroup,
