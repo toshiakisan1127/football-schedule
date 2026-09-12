@@ -26,6 +26,10 @@ def raw_fixture(fixture_id: int) -> dict:
 def setup_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATA_BUCKET_NAME", "fixture-bucket")
     monkeypatch.setenv("API_KEY_PARAMETER_NAME", "/football-schedule/kickoff-api-key")
+    monkeypatch.setenv(
+        "API_FOOTBALL_KEY_PARAMETER_NAME",
+        "/football-schedule/api-football-pro-key",
+    )
     monkeypatch.setenv("LOOKBACK_DAYS", "1")
     monkeypatch.setenv("LOOKAHEAD_DAYS", "30")
     monkeypatch.setattr(handler, "_load_api_key", lambda _: "secret")
@@ -61,6 +65,60 @@ def test_manual_single_competition_only_fetches_and_publishes_that_competition(
         "bundesliga"
     }
     assert result["competitions"][0]["competition"] == "bundesliga"
+
+
+def test_manual_j1_only_uses_api_football_and_publishes_j1(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup_env(monkeypatch)
+    fetched: list[dict] = []
+    published: list[dict] = []
+
+    def fake_fetch_j1(**kwargs) -> list[dict]:
+        fetched.append(kwargs)
+        return [
+            {
+                "fixture": {
+                    "id": 1556067,
+                    "date": "2026-09-13T09:30:00+00:00",
+                    "status": {"long": "Not Started", "short": "NS"},
+                },
+                "teams": {
+                    "home": {
+                        "id": 287,
+                        "name": "Urawa",
+                        "logo": "https://media.api-sports.io/football/teams/287.png",
+                    },
+                    "away": {
+                        "id": 310,
+                        "name": "Fagiano Okayama",
+                        "logo": "https://media.api-sports.io/football/teams/310.png",
+                    },
+                },
+                "goals": {"home": None, "away": None},
+            }
+        ]
+
+    monkeypatch.setattr(split_handler, "fetch_j1_fixtures", fake_fetch_j1)
+    monkeypatch.setattr(handler, "_publish_document", lambda **kwargs: published.append(kwargs))
+
+    result = split_handler.lambda_handler({"competitions": ["j1"]}, None)
+
+    assert len(fetched) == 1
+    assert fetched[0]["api_key"] == "secret"
+    assert len(published) == 1
+    assert published[0]["object_key"] == "data/fixtures/j1.json"
+    document = json.loads(published[0]["body"].decode("utf-8"))
+    assert document["competition"] == {
+        "id": "j1",
+        "name": "J1 League",
+        "country": "Japan",
+    }
+    assert document["fixtures"][0]["home"]["logo"] == (
+        "https://media.api-sports.io/football/teams/287.png"
+    )
+    assert document["fixtures"][0]["kickoff"] == "2026-09-13T09:30:00Z"
+    assert result["competitions"][0]["competition"] == "j1"
 
 
 def test_competition_ids_are_deduplicated(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,7 +158,13 @@ def test_scheduler_style_event_refreshes_all_competitions(
     setup_env(monkeypatch)
     fetched: list[str] = []
     published: list[dict] = []
-    fixture_ids = {"epl": 1001, "laliga": 2001, "bundesliga": 3001, "ligue1": 4001}
+    fixture_ids = {
+        "epl": 1001,
+        "laliga": 2001,
+        "bundesliga": 3001,
+        "ligue1": 4001,
+        "j1": 5001,
+    }
 
     def fake_fetch(**kwargs) -> list[dict]:
         competition = kwargs["competition"]
@@ -112,14 +176,15 @@ def test_scheduler_style_event_refreshes_all_competitions(
 
     result = split_handler.lambda_handler({"source": "aws.scheduler"}, None)
 
-    assert fetched == ["epl", "laliga", "bundesliga", "ligue1"]
+    assert fetched == ["epl", "laliga", "bundesliga", "ligue1", "j1"]
     assert [item["object_key"] for item in published] == [
         "data/fixtures/premier-league.json",
         "data/fixtures/laliga.json",
         "data/fixtures/bundesliga.json",
         "data/fixtures/ligue1.json",
+        "data/fixtures/j1.json",
     ]
-    assert result["fixtureCount"] == 4
+    assert result["fixtureCount"] == 5
 
 
 def test_one_competition_failure_does_not_block_other_competition_publishes(
@@ -127,7 +192,7 @@ def test_one_competition_failure_does_not_block_other_competition_publishes(
 ) -> None:
     setup_env(monkeypatch)
     published: list[dict] = []
-    fixture_ids = {"epl": 1001, "bundesliga": 3001, "ligue1": 4001}
+    fixture_ids = {"epl": 1001, "bundesliga": 3001, "ligue1": 4001, "j1": 5001}
 
     def fake_fetch(**kwargs) -> list[dict]:
         competition = kwargs["competition"]
@@ -145,6 +210,7 @@ def test_one_competition_failure_does_not_block_other_competition_publishes(
         "data/fixtures/premier-league.json",
         "data/fixtures/bundesliga.json",
         "data/fixtures/ligue1.json",
+        "data/fixtures/j1.json",
     ]
 
 
@@ -173,7 +239,8 @@ def test_failure_summary_emits_one_error_log(monkeypatch: pytest.MonkeyPatch, ca
     error_records = [record for record in caplog.records if record.levelname == "ERROR"]
     assert len(error_records) == 1
     payload = json.loads(error_records[0].message)
-    assert payload["failureCount"] == 4
-    assert payload["failedCompetitions"] == ["epl", "laliga", "bundesliga", "ligue1"]
-    assert payload["primaryCause"] == "KickoffAPI rate limit exceeded (HTTP 429)"
+    assert payload["failureCount"] == 5
+    assert payload["failedCompetitions"] == ["epl", "laliga", "bundesliga", "ligue1", "j1"]
+    assert payload["provider"] == "mixed"
+    assert payload["primaryCause"] == "Provider rate limit exceeded (HTTP 429)"
     assert payload["requestId"] == "request-123"
