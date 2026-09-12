@@ -11,6 +11,9 @@ All currently enabled competitions use API-Football v3:
 - Bundesliga (`bundesliga` / league `78`)
 - Ligue 1 (`ligue1` / league `61`)
 - J1 League (`j1` / league `98`)
+- UEFA Champions League (`ucl` / league `2`)
+- UEFA Europa League (`uel` / league `3`)
+- UEFA Conference League (`uecl` / league `848`)
 
 Application competition IDs are stable app-owned slugs and do not depend on provider IDs.
 
@@ -25,9 +28,21 @@ Before consolidating onto API-Football, the current feeds were compared against 
 - Bundesliga: 11/11 fixtures in the validation window matched
 - Ligue 1: 12/12 fixtures in the validation window matched
 
-La Liga also showed why the app does not currently publish 30 days ahead: a later round still contained generic placeholder kickoff times in API-Football after the official schedule had been announced. The MVP therefore uses a 21-day lookahead. The window can be extended later after re-validating each league against official schedule information.
+La Liga also showed why the app does not currently publish 30 days ahead: a later round still contained generic placeholder kickoff times in API-Football after the official schedule had been announced. Domestic leagues therefore use a 21-day lookahead. The window can be extended later after re-validating each league against official schedule information.
 
 The previous KickoffAPI v2 canonical-selection investigation is kept as historical validation documentation in [`kickoffapi-laliga-v2-validation.md`](kickoffapi-laliga-v2-validation.md), but KickoffAPI is no longer required by the deployed fixture fetcher.
+
+### UEFA club competitions
+
+The 2026/27 UEFA club competitions were validated directly against API-Football future fixtures:
+
+- Champions League: `league=2`, `season=2026`
+- Europa League: `league=3`, `season=2026`
+- Conference League: `league=848`, `season=2026`
+
+Future league-stage fixtures are returned with `status.short = NS` and the same fixture/team/logo structure used by domestic competitions.
+
+UEFA competitions use a 35-day lookahead. League-phase matchdays can be more than three weeks apart, so the domestic 21-day window can otherwise make a valid competition appear empty between matchdays. This longer window is scoped only to `ucl`, `uel`, and `uecl`; domestic leagues keep the shorter data-quality window.
 
 ### J1 League
 
@@ -48,11 +63,14 @@ The exact J1 curl commands, Free-plan restriction response, Pro response shape, 
 
 ## Publication window
 
-The Lambda currently publishes from one day back through 21 days ahead in JST.
+The Lambda publishes from one day back through:
 
-Provider-side range behavior is not trusted as the final boundary. After normalization, every fixture is filtered against the configured date window in JST before publishing.
+- 21 days ahead for domestic leagues
+- 35 days ahead for UEFA Champions League / Europa League / Conference League
 
-The 21-day limit is a data-quality policy rather than a provider limitation. To extend the range later, fetch the proposed range for each league and compare fixture cards and UTC kickoff times against official league information before changing `LOOKAHEAD_DAYS`.
+Provider-side range behavior is not trusted as the final boundary. After normalization, every fixture is filtered against its competition-specific JST date window before publishing.
+
+The 21-day domestic limit is a data-quality policy rather than a provider limitation. To extend the range later, fetch the proposed range for each league and compare fixture cards and UTC kickoff times against official league information before changing `LOOKAHEAD_DAYS`.
 
 ## Publishing rule
 
@@ -66,6 +84,9 @@ data/fixtures/laliga.json
 data/fixtures/bundesliga.json
 data/fixtures/ligue1.json
 data/fixtures/j1.json
+data/fixtures/champions-league.json
+data/fixtures/europa-league.json
+data/fixtures/conference-league.json
 ```
 
 Validation covers document metadata and range, fixture/team identifiers and names, duplicate fixture IDs, home/away consistency, supported statuses, non-negative scores, kickoff timestamps, JST range membership, sorting, and optional team logo HTTP(S) URLs.
@@ -88,4 +109,4 @@ The FixtureFetcher Lambda receives only the parameter name through an environmen
 
 ## Tests
 
-`pytest` covers API-Football request behavior, league routing, status mapping, UTC conversion, JST date-window filtering, score/logo preservation, J1 season selection, API error handling, application document validation, manual single-competition refreshes, and partial-success multi-competition publishing.
+`pytest` covers API-Football request behavior, league routing, competition-specific lookahead windows, status mapping, UTC conversion, JST date-window filtering, score/logo preservation, J1 season selection, API error handling, application document validation, manual single-competition refreshes, and partial-success multi-competition publishing.
