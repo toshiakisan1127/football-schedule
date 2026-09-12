@@ -28,6 +28,7 @@ SUPPORTED_EVENT_TYPES = {
     "goal": "goal",
     "card": "card",
     "subst": "substitution",
+    "var": "var",
 }
 
 
