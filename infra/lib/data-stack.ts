@@ -121,7 +121,7 @@ export class DataStack extends Stack {
       },
     })
 
-    new CfnOutput(this, 'KickoffApiKeyParameterName', {
+    new CfnOutput(this, 'ApiKeyParameterName', {
       value: kickoffApiKeyParameterName,
     })
 
