@@ -2,134 +2,232 @@
 
 ## Goal
 
-サッカーの日程情報だけを、利用者が素早く確認できることを最優先にする。
+サッカーの日程とLIVE状況を、利用者が日本時間で素早く確認できることを最優先にする。
 
-## Scope
+外部APIの詳細はバックエンドに閉じ込め、フロントはS3へ公開されたアプリ独自JSONだけを読む。ユーザー個人設定はlocalStorageに保存し、サーバーサイドのユーザーDBは持たない。
 
-### In scope
+## Current scope
+
+### Enabled competitions
 
 - Premier League
 - La Liga
 - Bundesliga
 - Ligue 1
 - J1 League
-- 直近の日程表示
-- 大会フィルター
-- 複数チームのフィルター
-- 日本人選手所属チームの 🇯🇵 表示
-- providerまたは静的マッピングから取得できるチームロゴ表示
-- live / finished / postponed / cancelled の状態管理
-- 試合結果の表示・非表示切り替え
+- UEFA Champions League
+- UEFA Europa League
+- UEFA Conference League
+
+すべてAPI-Football v3を利用する。Serie Aなどは今後の追加対象。
+
+### Main product capabilities
+
+- 全日程 / 今日 / 明日 / 今週末 / 今から見る
+- 複数大会フィルター
+- 複数チームフィルター
+- 日本人選手所属チームの 🇯🇵 表示 / 絞り込み
+- JSTキックオフ表示
+- 結果の表示 / 非表示
+- LIVEスコア・経過時間
+- LIVEイベント（ゴール / カード / 交代）の展開表示
 - ライト / ダークテーマ
-- 最終更新時刻表示
 - PWA
-
-UEFA Champions League、Europa League、Conference League、Serie A などは順次追加対象。
-
-### Out of scope
-
-- 順位表
-- ニュース
-- 選手詳細
-- ログイン
-- サーバーサイドのユーザーDB
-- 試合開始などのPush通知
 
 ## System overview
 
 ```text
-                                      +----------------------+
-                                      | SSM SecureString     |
-                                      | API-Football API key |
-                                      +----------+-----------+
-                                                 |
-                                                 v
-+----------------------+              +-----------------------+
-| EventBridge Scheduler|------------->| Fixture Fetcher Lambda|
-| daily 05:00 JST      |              +-----------+-----------+
-+----------------------+                          |
-                                                 v
-                                      +-----------------------+
-                                      | API-Football v3       |
-                                      | /fixtures             |
-                                      +-----------+-----------+
-                                                  |
-                                      normalize / JST filter
-                                      per-league validation
-                                                  |
-                                                  v
-                                      +-----------------------+
-                                      | S3 data bucket        |
-                                      | data/fixtures/*.json  |
-                                      +-----------+-----------+
-                                                  |
-                                                  |
-Nuxt static output --> S3 site bucket             |
-        |                                         |
-        +----------------------+------------------+
-                               v
-                          +----------+
-                          |CloudFront|
-                          +----+-----+
-                               |
-                               v
-                            Browser
-
-Fixture Fetcher Lambda
-        |
-        | structured logs
-        v
-+----------------------+
-| CloudWatch Logs      |
-+----------+-----------+
-           |
-           | level = ERROR only
-           v
-+----------------------+
-| Subscription Filter  |
-+----------+-----------+
-           |
-           v
-+----------------------+
-| BatchErrorNotifier   |
-| Lambda               |
-+----------+-----------+
-           |
-           v
-+----------------------+
-| SNS Topic            |
-+----------+-----------+
-           |
-           v
-       Alert email
+                                     +----------------------+
+                                     | SSM SecureString     |
+                                     | API-Football Pro key |
+                                     +----------+-----------+
+                                                |
+                         +----------------------+
+                         |                      |
+                         v                      v
+              +-------------------+   +------------------------+
+              | FixtureFetcher    |   | LiveFixtureFetcher     |
+              | Lambda            |   | Lambda                 |
+              | daily 05:00 JST   |   | every 5 minutes        |
+              +---------+---------+   +-----------+------------+
+                        |                         |
+                        +------------+------------+
+                                     |
+                                     v
+                           +--------------------+
+                           | API-Football v3    |
+                           | /fixtures          |
+                           +---------+----------+
+                                     |
+                  normalize / validate / app schema
+                         |                         |
+                         v                         v
+            +------------------------+   +------------------------+
+            | S3 fixture documents   |   | S3 live snapshot       |
+            | data/fixtures/*.json   |   | data/fixtures/live.json|
+            +-----------+------------+   +-----------+------------+
+                        |                            |
+                        +-------------+--------------+
+                                      |
+Nuxt static output --> S3 site bucket |
+        |                              |
+        +------------------------------+
+                                      v
+                                +------------+
+                                | CloudFront |
+                                +------+-----+
+                                       |
+                                       v
+                                    Browser
+                           daily docs + LIVE overlay
 ```
 
-フロントエンドから外部APIを直接呼ばない。provider差分はFixture Fetcher Lambda内に閉じ込め、フロントはアプリ独自のfixture contractだけを扱う。
+フロントエンドからAPI-Footballを直接呼ばない。APIキーはSSM SecureStringに保存し、Lambdaだけが読む。
 
-ERROR通知も取得処理本体から直接メール送信せず、CloudWatch LogsのERRORログをSubscription Filterで拾い、専用LambdaからSNSへ転送する。
+## Error alerting overview
+
+```text
+FixtureFetcher Lambda                  LiveFixtureFetcher Lambda
+        |                                      |
+        | structured ERROR                     | structured ERROR
+        v                                      v
+CloudWatch Log Group                   CloudWatch Log Group
+        |                                      |
+        | Subscription Filter                  | Subscription Filter
+        | $.level = ERROR                      | $.level = ERROR
+        +-------------------+------------------+
+                            |
+                            v
+                  +----------------------+
+                  | BatchErrorNotifier   |
+                  | Lambda               |
+                  +----------+-----------+
+                             |
+                      build fingerprint
+                             |
+                             v
+                  +----------------------+
+                  | DynamoDB             |
+                  | alert throttle state |
+                  +----------+-----------+
+                             |
+                    conditional claim
+                       /           \
+                acquired         cooldown
+                   |                |
+                   v                +--> suppress
+              +----------+
+              | SNS Topic|
+              +----+-----+
+                   |
+                   v
+               Alert email
+```
+
+同一エラーfingerprintは初回だけ即通知し、その後6時間は抑止する。別エラーは即通知できる。詳細は [`error-alerting.md`](error-alerting.md) を参照。
 
 ## Provider strategy
 
-現在の有効大会はAPI-Football v3へ統一する。
+現在のcompetition mappingは以下。
 
-- Premier League: league `39`
-- La Liga: league `140`
-- Bundesliga: league `78`
-- Ligue 1: league `61`
-- J1 League: league `98`
+| App ID | Competition | API-Football league ID |
+| --- | --- | ---: |
+| `epl` | Premier League | 39 |
+| `laliga` | La Liga | 140 |
+| `bundesliga` | Bundesliga | 78 |
+| `ligue1` | Ligue 1 | 61 |
+| `j1` | J1 League | 98 |
+| `ucl` | UEFA Champions League | 2 |
+| `uel` | UEFA Europa League | 3 |
+| `uecl` | UEFA Conference League | 848 |
 
-欧州4リーグは共通の `GET /fixtures` 取得経路を使う。J1のみ、秋春制シーズンの識別子を終了年で扱うためseason変換を専用処理に閉じ込める。
+アプリ側competition IDはprovider IDから独立したstable slugとして扱う。
 
-providerレスポンスをアプリ共通schemaへ正規化し、JSTの公開windowで再フィルタしてから検証・publishする。チームロゴはAPI-Footballのfixtureレスポンスを利用できるため、ロゴ取得専用の追加リクエストは行わない。
+J1はAPI-Footballが秋春制シーズンを終了年で識別するため、2026年後半の日程は `season=2027` を利用する。
 
-移行前の比較結果と21日window採用理由は [`data-source.md`](data-source.md) を参照する。KickoffAPI v2のLa Liga検証は [`kickoffapi-laliga-v2-validation.md`](kickoffapi-laliga-v2-validation.md) に履歴として残す。
+詳細は [`data-source.md`](data-source.md) を参照。
 
-## Normalized fixture schema
+## Daily fixture pipeline
 
-外部APIのレスポンスを直接フロントへ渡さず、Lambdaで以下の形へ正規化する。
+### Schedule
+
+- EventBridge Scheduler: 毎日05:00 JST
+- Lambda: `FixtureFetcher`
+- runtime: Python 3.13
+- timeout: 5分
+- credential: SSM `/football-schedule/api-football-pro-key`
+
+### Publication window
+
+- lookback: 1日
+- 欧州国内リーグ: 21日先
+- UEFA CL / EL / ECL: 35日先
+- J1: 100日先
+
+provider側rangeだけを信用せず、normalize後にJST基準で再フィルタする。
+
+### Failure isolation
+
+大会ごとにfetch → normalize → validate → publishする。1大会が失敗しても、成功した大会は更新する。失敗大会のS3 objectは上書きせず、直前の正常JSONを維持する。
+
+## LIVE pipeline
+
+### Schedule and source
+
+- EventBridge Scheduler: 5分ごと
+- Lambda: `LiveFixtureFetcher`
+- runtime: Python 3.13
+- timeout: 1分
+- API: `GET /fixtures?live=39-140-78-61-98-2-3-848&timezone=Asia/Tokyo`
+- 全8大会を1リクエストで取得
+- API request volume: 288 requests/day
+
+### Published object
+
+`data/fixtures/live.json`
+
+```json
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-13T03:40:00Z",
+  "expiresAt": "2026-09-13T03:50:00Z",
+  "fixtures": [
+    {
+      "id": "1575165",
+      "competitionId": "bundesliga",
+      "period": "2H",
+      "elapsed": 76,
+      "extra": null,
+      "score": { "home": 1, "away": 1 },
+      "events": []
+    }
+  ]
+}
+```
+
+`expiresAt = generatedAt + 10分`。LIVE Lambdaが失敗し続けて古いobjectがS3へ残っても、フロントは期限切れsnapshotを無視する。
+
+### Frontend polling
+
+- 初回表示時: 即取得
+- fresh LIVE fixtureが0件: 5分間隔
+- fresh LIVE fixtureが1件以上: 1分間隔
+- background tab: polling停止
+- foreground復帰: 即取得して適切なintervalへ再設定
+
+CloudFront request数を抑えつつ、試合中だけ鮮度を上げる。
+
+詳細は [`live-fixtures.md`](live-fixtures.md) を参照。
+
+## Daily fixture schema
 
 ```ts
-export type FixtureStatus = 'scheduled' | 'live' | 'finished' | 'postponed' | 'cancelled'
+export type FixtureStatus =
+  | 'scheduled'
+  | 'live'
+  | 'finished'
+  | 'postponed'
+  | 'cancelled'
 
 export interface FixtureTeam {
   id: string
@@ -170,36 +268,31 @@ export interface FixtureDocument {
 }
 ```
 
-`kickoff` と `generatedAt` はUTCのISO 8601で保存する。取得windowの最終判定と画面表示はJSTで行う。
-
-アプリ側のcompetition idはprovider IDから独立させる。
-
-`logo` は静的マッピングを優先し、利用できない場合はproviderレスポンスの `logo` / `image` / `crest` を利用する。HTTP(S) URLだけを許可し、ロゴ補完だけのために追加APIリクエストは行わない。
+`kickoff` と `generatedAt` はUTC ISO 8601で保存し、画面表示はJSTへ変換する。
 
 ## Fixture document validation
 
-S3へ公開する直前に、リーグごとの `schemaVersion = 1` documentを検証する。
+S3 publish直前にcompetition documentを検証する。
 
 主な検証項目:
 
-- rootのcompetition metadataが対象リーグと一致すること
-- `generatedAt` がUTC timestampであること
+- competition metadata一致
+- `schemaVersion = 1`
+- `generatedAt` がUTC timestamp
 - `range.from <= range.to`
-- fixture IDが重複していないこと
-- competition IDが設定済みであること
-- 同じteam IDがdocument内で複数のteam名へ変化していないこと
-- home / awayが同一チームではないこと
-- kickoffがUTC timestampで、JST換算後にdocument range内であること
-- statusが既知の値であること
-- scoreがnullまたは非負整数であること
-- logoが存在する場合はHTTP(S) URLであること
-- fixturesがkickoff / id順にsort済みであること
+- fixture ID重複なし
+- competition ID設定済み
+- team ID / team名 consistency
+- home / awayが同一でない
+- kickoffがUTC timestampかつJST range内
+- statusが既知値
+- scoreがnullまたは非負整数
+- logoが存在する場合HTTP(S)
+- fixturesがkickoff / id順にsort済み
 
-検証に失敗したリーグはS3へputせず、そのリーグの直前の正常なJSONを保持する。他リーグの更新は独立して継続できる。
+validation失敗時はS3へputしない。
 
 ## S3 layout
-
-fixture JSONはリーグ単位で分割して配信する。
 
 ```text
 data/
@@ -209,27 +302,50 @@ data/
     bundesliga.json
     ligue1.json
     j1.json
+    champions-league.json
+    europa-league.json
+    conference-league.json
+    live.json
 ```
 
-新しい大会を追加する場合も同じprefix配下に1大会1ファイルで追加する。
+通常fixtureは大会単位、LIVEは全大会横断snapshotとして分離する。
 
-## Refresh strategy
+## DynamoDB
 
-- EventBridge Schedulerから毎日05:00 JSTにLambdaを実行する
-- Schedulerは `ENABLED`
-- Lambda runtimeはPython 3.13
-- Lambda timeoutは5分
-- 公開対象はJST基準で前日から21日先まで
-- Scheduler実行では全対象大会を更新する
-- 手動実行ではeventの `competitions` で対象大会を限定できる
-- 大会ごとに取得・正規化・validation・S3 publishを行う
-- 1大会が失敗しても、成功した大会のJSONは更新できる
+ユーザーデータ用DBは持たない。現在のDynamoDBは**運用通知の重複抑止専用**。
 
-21日先はMVPのデータ品質を優先した上限とする。30日などへ延長する場合は、リーグごとにAPI-Footballの対象rangeを取得し、公式日程と対戦カード・UTC kickoffを照合してから変更する。
+### `BatchErrorAlertStateTable`
+
+| Property | Value |
+| --- | --- |
+| Partition key | `fingerprint` (String) |
+| Sort key | なし |
+| Billing mode | PAY_PER_REQUEST |
+| TTL attribute | `expiresAt` |
+| Removal policy | DESTROY |
+| GSI | なし |
+| Writer/reader | BatchErrorNotifier Lambda |
+
+Item:
+
+```json
+{
+  "fingerprint": "<sha256>",
+  "lastNotifiedAt": 1789243200,
+  "expiresAt": 1789329600
+}
+```
+
+- notification cooldown: 21,600秒（6時間）
+- state TTL: 86,400秒（24時間）
+- cooldown判定はTTLではなく `lastNotifiedAt` へのconditional updateで行う
+- TTLは古いfingerprint行の自動掃除にのみ利用
+
+詳細は [`error-alerting.md`](error-alerting.md) を参照。
 
 ## Frontend state
 
-サーバー側のユーザーデータは持たず、ユーザー設定はlocalStorageへ保存する。
+サーバー側ユーザーデータは持たず、設定はlocalStorageへ保存する。
 
 ```text
 football-schedule-competitions
@@ -238,35 +354,46 @@ football-schedule-show-results
 football-schedule-theme
 ```
 
-日本人選手所属チームの情報はフロント側で明示的に管理し、team名のaliasを正規化して照合する。
+日本人選手所属チーム情報はフロント側metadataで管理する。
 
 ## AWS stacks
 
 ### HostingStack
 
 - Nuxt static output用S3 bucket
-- Fixture JSON用S3 bucket
+- Fixture JSON用S3 data bucket
 - CloudFront distribution
 - Origin Access Control
-- GitHub Actions用OIDC deploy role
+- GitHub Actions OIDC deploy role
 
-S3 bucketはpublic accessをblockし、CloudFront OAC経由だけで配信する。
-
-CloudFrontはサイトと `data/*` の両方でAWS Managed cache policyを利用し、CloudFront Free Planと両立する構成にする。
+S3はpublic accessをblockし、CloudFront OAC経由で配信する。CloudFrontはAWS Managed Cache Policyを利用し、Free Planで使える構成を維持する。
 
 ### DataStack
 
-- Fixture Fetcher Lambda
-- Fixture Fetcher専用CloudWatch Log Group
-- EventBridge Scheduler
+- `FixtureFetcher` Lambda
+- `LiveFixtureFetcher` Lambda
+- 各Lambda専用CloudWatch Log Group
+- EventBridge Scheduler（日次 / 5分LIVE）
 - API-Football credentialのSSM参照
-- fixture data bucketへの書き込み権限
-- CloudWatch Logs Subscription Filter（`level = ERROR`）
-- BatchErrorNotifier Lambda
+- S3 fixture data write権限
+- CloudWatch Logs Subscription Filter × 2
+- `BatchErrorNotifier` Lambda
+- `BatchErrorAlertStateTable` DynamoDB
 - batch error用SNS Topic
-- SNS email subscription（`BATCH_ALERT_EMAIL` が設定されている場合）
+- SNS email subscription（`BATCH_ALERT_EMAIL` 設定時）
 
-`BATCH_ALERT_EMAIL` はGitHub Actionsのrepository variableからCDK deploy時に渡す。SNS email subscriptionは初回のみ受信者側でconfirmationが必要。
+## Error notification behavior
+
+1. daily / LIVE Lambdaはstructured JSON logをCloudWatch Logsへ出す
+2. `level = ERROR` のみSubscription FilterでNotifierへ送る
+3. Notifierがlog group + normalized error identityからSHA-256 fingerprintを生成
+4. DynamoDBへconditional updateして通知claimを取る
+5. 初回または6時間経過済みならSNS publish
+6. cooldown内ならメールを抑止
+7. DynamoDB障害時はfail-openでSNS publish
+8. SNS publish失敗時はclaimを可能な範囲でreleaseして再試行可能にする
+
+WARN / INFOはメール通知しない。
 
 ## Deployment flow
 
@@ -312,36 +439,22 @@ immutable deployment plan artifact
 
 GitHub ActionsからAWSへの認証はOIDCを利用し、長期Access Keyは使わない。
 
-## Failure handling
-
-1. 外部APIの取得に失敗した大会は、その大会の公開JSONを更新しない
-2. fixtureの正規化またはfixture documentのvalidationに失敗した場合も対象大会を更新しない
-3. 成功した他大会の更新は継続する
-4. Fixture Fetcherは処理状況をstructured logでCloudWatch Logsへ出力する
-5. `level = ERROR` のログだけをSubscription FilterでBatchErrorNotifierへ転送する
-6. BatchErrorNotifierはSNSへpublishし、購読済みメールアドレスへ通知する
-7. WARN / INFOはメール通知しない
-8. フロントはリーグごとの `generatedAt` をもとに最終更新時刻を表示する
-9. team logoの読み込みに失敗した場合、フロントでは画像だけを非表示にしてteam名は維持する
-
 ## Security
 
-- API-Football keyはSSM SecureString `/football-schedule/api-football-pro-key` で管理する
-- 外部APIキーはフロントへ渡さない
-- Fixture Fetcher Lambdaだけにfixture data bucketへのput権限を付与する
-- BatchErrorNotifier LambdaにはSNS Topicへのpublish権限だけを付与する
-- S3 bucketはpublic accessをblockする
-- CloudFront OACから読み取る
-- team logo URLは公開前validationでHTTP(S)だけ許可する
-- GitHub ActionsはOIDCでAWS roleをassumeする
+- API-Football Pro keyはSSM SecureStringで管理
+- 外部APIキーをフロントへ渡さない
+- FixtureFetcherはfixture data prefixへのput権限
+- LiveFixtureFetcherは `data/fixtures/live.json` へのput権限
+- BatchErrorNotifierはSNS publish + alert-state DynamoDB read/write権限
+- S3 bucketはpublic access block
+- CloudFront OAC経由でread
+- team logo URLはHTTP(S)のみ許可
+- GitHub ActionsはOIDCでAWS roleをassume
 
-## Future ideas
+## Related docs
 
-- UEFA Champions League / Europa League / Conference League
-- Serie A
-- J2 / J3 / カップ戦 / 代表戦
-- お気に入りだけのホーム画面
-- カレンダー追加（ICS）
-- 試合開始・お気に入り試合のPush通知
-- 試合の放送・配信先情報
-- fixture JSONの鮮度監視
+- [`data-source.md`](data-source.md): API-Football mapping / publication windows
+- [`live-fixtures.md`](live-fixtures.md): LIVE snapshot / polling / expiry
+- [`error-alerting.md`](error-alerting.md): DynamoDB throttle / fingerprint / failure policy
+- [`api-football-j1-validation.md`](api-football-j1-validation.md): J1 provider検証
+- [`product-vision.md`](product-vision.md): product direction
