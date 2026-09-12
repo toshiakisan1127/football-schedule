@@ -19,13 +19,23 @@ export class DataStack extends Stack {
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props)
 
-    const apiKeyParameterName = '/football-schedule/kickoff-api-key'
+    const kickoffApiKeyParameterName = '/football-schedule/kickoff-api-key'
+    const apiFootballKeyParameterName = '/football-schedule/api-football-pro-key'
 
-    const apiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(
+    const kickoffApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(
       this,
       'KickoffApiKeyParameter',
       {
-        parameterName: apiKeyParameterName,
+        parameterName: kickoffApiKeyParameterName,
+        version: 1,
+      },
+    )
+
+    const apiFootballKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(
+      this,
+      'ApiFootballKeyParameter',
+      {
+        parameterName: apiFootballKeyParameterName,
         version: 1,
       },
     )
@@ -52,7 +62,8 @@ export class DataStack extends Stack {
       logGroup: fixtureFetcherLogGroup,
       environment: {
         DATA_BUCKET_NAME: props.dataBucket.bucketName,
-        API_KEY_PARAMETER_NAME: apiKeyParameterName,
+        API_KEY_PARAMETER_NAME: kickoffApiKeyParameterName,
+        API_FOOTBALL_KEY_PARAMETER_NAME: apiFootballKeyParameterName,
         FIXTURE_OBJECT_PREFIX: 'data/fixtures',
         LOOKBACK_DAYS: '1',
         LOOKAHEAD_DAYS: '30',
@@ -60,7 +71,8 @@ export class DataStack extends Stack {
     })
 
     props.dataBucket.grantPut(fixtureFetcher, 'data/*')
-    apiKeyParameter.grantRead(fixtureFetcher)
+    kickoffApiKeyParameter.grantRead(fixtureFetcher)
+    apiFootballKeyParameter.grantRead(fixtureFetcher)
 
     const batchErrorTopic = new sns.Topic(this, 'BatchErrorTopic', {
       displayName: 'Match Calendar batch errors',
@@ -109,8 +121,12 @@ export class DataStack extends Stack {
       },
     })
 
-    new CfnOutput(this, 'ApiKeyParameterName', {
-      value: apiKeyParameterName,
+    new CfnOutput(this, 'KickoffApiKeyParameterName', {
+      value: kickoffApiKeyParameterName,
+    })
+
+    new CfnOutput(this, 'ApiFootballKeyParameterName', {
+      value: apiFootballKeyParameterName,
     })
 
     new CfnOutput(this, 'FixtureFetcherFunctionName', {
