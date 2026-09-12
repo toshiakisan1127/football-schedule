@@ -1,0 +1,27 @@
+.fixture-row--live[role='button'] {
+  cursor: pointer;
+}
+
+.fixture-row--live[role='button']:hover {
+  background: var(--surface-muted);
+}
+
+.fixture-row--live[role='button']:focus-visible {
+  outline: 2px solid var(--status-text);
+  outline-offset: -2px;
+}
+
+.fixture-row--live[aria-expanded='false'] .fixture-status--live::after,
+.fixture-row--live[aria-expanded='true'] .fixture-status--live::after {
+  display: inline-block;
+  margin-left: 3px;
+  line-height: 1;
+}
+
+.fixture-row--live[aria-expanded='false'] .fixture-status--live::after {
+  content: '⌄';
+}
+
+.fixture-row--live[aria-expanded='true'] .fixture-status--live::after {
+  content: '⌃';
+}
