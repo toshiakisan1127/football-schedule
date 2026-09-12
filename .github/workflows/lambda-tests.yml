@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - 'infra/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/lambda-tests.yml'
   push:
     branches:
       - main
     paths:
       - 'infra/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/lambda-tests.yml'
   workflow_dispatch:
 
@@ -58,7 +62,8 @@ jobs:
             echo 'lambda=false' >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^infra/(?!lambda/).*\.tsx?$|^infra/package(-lock)?\.json$|^package(-lock)?\.json$|^\.github/workflows/lambda-tests\.yml$' <<< "$changed_files"; then
+          cdk_files=$(grep -Ev '^infra/lambda/' <<< "$changed_files" || true)
+          if grep -Eq '^infra/.*\.tsx?$|^infra/package(-lock)?\.json$|^package(-lock)?\.json$|^\.github/workflows/lambda-tests\.yml$' <<< "$cdk_files"; then
             echo 'cdk=true' >> "$GITHUB_OUTPUT"
           else
             echo 'cdk=false' >> "$GITHUB_OUTPUT"
