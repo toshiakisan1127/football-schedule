@@ -30,6 +30,7 @@ export default defineNuxtConfig({
     '~/assets/css/main.css',
     '~/assets/css/team-filter.css',
     '~/assets/css/fixture-team-name.css',
+    '~/assets/css/live-fixtures.css',
   ],
   vite: {
     plugins: [tailwindcss()],

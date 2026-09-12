@@ -56,6 +56,51 @@ def test_fetch_premier_league_fixtures_uses_league_39_and_requested_season(monke
     }
 
 
+def test_fetch_live_fixtures_batches_leagues_into_one_request(monkeypatch) -> None:
+    requests: list[dict] = []
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "errors": [],
+                "paging": {"current": 1, "total": 1},
+                "response": [
+                    {"fixture": {"id": 1557406}},
+                    {"fixture": {"id": 1570373}},
+                ],
+            }
+
+    def fake_get(url, *, headers, params, timeout):
+        requests.append(
+            {
+                "url": url,
+                "headers": headers,
+                "params": params,
+                "timeout": timeout,
+            }
+        )
+        return Response()
+
+    monkeypatch.setattr(api_football._http, "get", fake_get)
+
+    fixtures = api_football.fetch_live_fixtures(
+        api_key="pro-secret",
+        league_ids=[39, 140, 78, 61, 98, 2, 3, 848],
+    )
+
+    assert [fixture["fixture"]["id"] for fixture in fixtures] == [1557406, 1570373]
+    assert len(requests) == 1
+    assert requests[0]["url"] == "https://v3.football.api-sports.io/fixtures"
+    assert requests[0]["headers"] == {"x-apisports-key": "pro-secret"}
+    assert requests[0]["params"] == {
+        "live": "39-140-78-61-98-2-3-848",
+        "timezone": "Asia/Tokyo",
+    }
+
+
 def test_fetch_j1_fixtures_uses_api_football_key_and_range_without_page(monkeypatch) -> None:
     requests: list[dict] = []
 
