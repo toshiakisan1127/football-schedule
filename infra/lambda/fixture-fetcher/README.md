@@ -11,6 +11,9 @@ All enabled competitions use API-Football v3:
 - Bundesliga: `league=78`
 - Ligue 1: `league=61`
 - J1 League: `league=98`
+- UEFA Champions League: `league=2`
+- UEFA Europa League: `league=3`
+- UEFA Conference League: `league=848`
 
 European competitions use the shared `fetch_fixtures` path. J1 uses the same API-Football endpoint with season handling isolated because API-Football identifies the autumn-spring 2026/27 season as `season=2027`.
 
@@ -22,9 +25,12 @@ See [`../../../docs/data-source.md`](../../../docs/data-source.md) for provider 
 
 - Runtime: Python 3.13
 - Schedule: daily at 05:00 JST via EventBridge Scheduler
-- Window: 1 day lookback / 21 days lookahead in JST
+- Domestic-league window: 1 day lookback / 21 days lookahead in JST
+- UEFA competition window: 1 day lookback / 35 days lookahead in JST
 - Output: league-specific files under `data/fixtures/`
 - API-Football Pro key: SSM SecureString `/football-schedule/api-football-pro-key`
+
+The longer UEFA lookahead is intentional because league-phase matchdays can be more than three weeks apart. Domestic leagues remain at 21 days to avoid surfacing provisional kickoff times too far ahead, especially in competitions such as La Liga.
 
 Team logos are preserved from the API-Football fixture response when available. Missing logos may use the existing static mapping fallback; the Lambda does not make an additional API request only to fetch a logo.
 
