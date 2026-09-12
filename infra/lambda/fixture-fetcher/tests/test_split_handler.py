@@ -146,3 +146,34 @@ def test_one_competition_failure_does_not_block_other_competition_publishes(
         "data/fixtures/bundesliga.json",
         "data/fixtures/ligue1.json",
     ]
+
+
+def test_failure_summary_emits_one_error_log(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    setup_env(monkeypatch)
+
+    class Response:
+        status_code = 429
+
+    class RateLimitError(Exception):
+        response = Response()
+
+    def fake_fetch(**kwargs) -> list[dict]:
+        raise RateLimitError("429 Too Many Requests")
+
+    monkeypatch.setattr(split_handler, "_fetch_competition_fixtures", fake_fetch)
+    monkeypatch.setattr(handler, "_publish_document", lambda **kwargs: None)
+
+    class Context:
+        aws_request_id = "request-123"
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(handler.FixtureDataError):
+            split_handler.lambda_handler({}, Context())
+
+    error_records = [record for record in caplog.records if record.levelname == "ERROR"]
+    assert len(error_records) == 1
+    payload = json.loads(error_records[0].message)
+    assert payload["failureCount"] == 4
+    assert payload["failedCompetitions"] == ["epl", "laliga", "bundesliga", "ligue1"]
+    assert payload["primaryCause"] == "KickoffAPI rate limit exceeded (HTTP 429)"
+    assert payload["requestId"] == "request-123"
