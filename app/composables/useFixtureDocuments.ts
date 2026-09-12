@@ -18,7 +18,6 @@ const FIXTURE_SOURCES = [
 ] as const
 
 const LIVE_REFRESH_INTERVAL_MS = 60_000
-const LIVE_STALE_AFTER_MS = 15 * 60_000
 
 const sortDocuments = (documents: FixtureDocument[]) =>
   [...documents].sort((a, b) => a.competition.id.localeCompare(b.competition.id))
@@ -79,14 +78,15 @@ const isLiveFixture = (value: unknown): value is LiveFixtureSnapshot => {
 
 const isLiveFixtureDocument = (value: unknown): value is LiveFixtureDocument => {
   if (!isRecord(value)) return false
-  if (value.schemaVersion !== 1 || typeof value.generatedAt !== 'string') return false
+  if (value.schemaVersion !== 1) return false
+  if (typeof value.generatedAt !== 'string' || typeof value.expiresAt !== 'string') return false
   return Array.isArray(value.fixtures) && value.fixtures.every(isLiveFixture)
 }
 
 const isFreshLiveDocument = (document: LiveFixtureDocument | null) => {
   if (!document) return false
-  const generatedAt = new Date(document.generatedAt).getTime()
-  return Number.isFinite(generatedAt) && Date.now() - generatedAt <= LIVE_STALE_AFTER_MS
+  const expiresAt = new Date(document.expiresAt).getTime()
+  return Number.isFinite(expiresAt) && Date.now() < expiresAt
 }
 
 const mergeLiveFixture = (
