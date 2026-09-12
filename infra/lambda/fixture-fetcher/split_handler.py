@@ -7,7 +7,7 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from api_football import fetch_j1_fixtures
+from api_football import fetch_j1_fixtures, fetch_premier_league_fixtures
 import handler as legacy
 from ligue1_v2 import (
     Ligue1V2SelectionError,
@@ -22,6 +22,7 @@ LIGUE1_COMPETITION = legacy.Competition("ligue1", 61, "Ligue 1", "France")
 J1_COMPETITION = legacy.Competition("j1", 98, "J1 League", "Japan")
 COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION, J1_COMPETITION)
 LIGUE1_V2_LEAGUE_ID = "fr.1"
+API_FOOTBALL_COMPETITION_IDS = {"epl", "j1"}
 
 OBJECT_FILENAMES = {
     "epl": "premier-league.json",
@@ -59,7 +60,11 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
 
     for competition in competitions:
         provider = _provider_name(competition)
-        api_key = api_football_api_key if competition.app_id == "j1" else kickoff_api_key
+        api_key = (
+            api_football_api_key
+            if competition.app_id in API_FOOTBALL_COMPETITION_IDS
+            else kickoff_api_key
+        )
         if api_key is None:
             raise legacy.FixtureDataError(f"No API key loaded for provider {provider}")
 
@@ -155,21 +160,31 @@ def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competi
 
 
 def _load_kickoff_api_key(competitions: tuple[legacy.Competition, ...]) -> str | None:
-    if not any(competition.app_id != "j1" for competition in competitions):
+    if not any(
+        competition.app_id not in API_FOOTBALL_COMPETITION_IDS
+        for competition in competitions
+    ):
         return None
     parameter_name = legacy._required_env("API_KEY_PARAMETER_NAME")
     return legacy._load_api_key(parameter_name)
 
 
 def _load_api_football_key(competitions: tuple[legacy.Competition, ...]) -> str | None:
-    if not any(competition.app_id == "j1" for competition in competitions):
+    if not any(
+        competition.app_id in API_FOOTBALL_COMPETITION_IDS
+        for competition in competitions
+    ):
         return None
     parameter_name = legacy._required_env("API_FOOTBALL_KEY_PARAMETER_NAME")
     return legacy._load_api_key(parameter_name)
 
 
 def _provider_name(competition: legacy.Competition) -> str:
-    return "API-Football" if competition.app_id == "j1" else "KickoffAPI"
+    return (
+        "API-Football"
+        if competition.app_id in API_FOOTBALL_COMPETITION_IDS
+        else "KickoffAPI"
+    )
 
 
 def _fetch_competition_fixtures(
@@ -180,6 +195,20 @@ def _fetch_competition_fixtures(
     from_date: Any,
     to_date: Any,
 ) -> list[dict[str, Any]]:
+    if competition.app_id == "epl":
+        fixtures = fetch_premier_league_fixtures(
+            api_key=api_key,
+            season=season,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        LOGGER.info(
+            "Fetched API-Football Premier League fixtures: season=%d fetched=%d",
+            season,
+            len(fixtures),
+        )
+        return fixtures
+
     if competition.app_id == "j1":
         fixtures = fetch_j1_fixtures(
             api_key=api_key,
@@ -235,7 +264,7 @@ def _normalize_provider_fixture(
     team_ids: dict[str, str],
 ) -> dict[str, Any]:
     fixture = legacy._normalize_fixture(item, competition, team_ids=team_ids)
-    if competition.app_id != "j1":
+    if competition.app_id not in API_FOOTBALL_COMPETITION_IDS:
         return fixture
 
     raw_home, raw_away = legacy._raw_teams(item)
