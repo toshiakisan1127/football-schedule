@@ -7,6 +7,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import handler as legacy
+from ligue1_v2 import (
+    Ligue1V2SelectionError,
+    select_canonical_fixtures as select_ligue1_canonical_fixtures,
+)
 from validation import SCHEMA_VERSION, FixtureDocumentValidationError, validate_fixture_document
 
 LOGGER = logging.getLogger()
@@ -130,7 +134,7 @@ def _fetch_competition_fixtures(
     to_date: Any,
 ) -> list[dict[str, Any]]:
     if competition.app_id == "ligue1":
-        return legacy._fetch_v2_fixture_pages(
+        fixtures = legacy._fetch_v2_fixture_pages(
             api_key=api_key,
             competition=competition,
             league_id=LIGUE1_V2_LEAGUE_ID,
@@ -138,6 +142,23 @@ def _fetch_competition_fixtures(
             from_date=from_date,
             to_date=to_date,
         )
+        try:
+            selected = select_ligue1_canonical_fixtures(
+                fixtures,
+                from_date=from_date,
+                to_date=to_date,
+            )
+        except Ligue1V2SelectionError as exc:
+            raise legacy.FixtureDataError(
+                f"Ligue 1 v2 canonical fixture selection failed: {exc}"
+            ) from exc
+        LOGGER.info(
+            "Selected canonical Ligue 1 v2 fixtures: season=%d fetched=%d selected=%d",
+            season,
+            len(fixtures),
+            len(selected),
+        )
+        return selected
 
     return legacy._fetch_competition_fixtures(
         api_key=api_key,
