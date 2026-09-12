@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import live_handler
 
@@ -46,6 +47,9 @@ def test_build_live_document_normalizes_score_status_and_events() -> None:
     document = live_handler._build_live_document([_live_fixture()])
 
     assert document["schemaVersion"] == 1
+    generated_at = datetime.fromisoformat(document["generatedAt"].replace("Z", "+00:00"))
+    expires_at = datetime.fromisoformat(document["expiresAt"].replace("Z", "+00:00"))
+    assert (expires_at - generated_at).total_seconds() == 10 * 60
     assert len(document["fixtures"]) == 1
     fixture = document["fixtures"][0]
     assert fixture == {
@@ -110,12 +114,14 @@ def test_lambda_handler_publishes_complete_snapshot(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["fixtureCount"] == 1
     assert result["objectKey"] == "data/fixtures/live.json"
+    assert result["expiresAt"]
     assert len(puts) == 1
     assert puts[0]["Bucket"] == "fixtures-bucket"
     assert puts[0]["Key"] == "data/fixtures/live.json"
     assert puts[0]["CacheControl"] == "public, max-age=60"
     body = json.loads(puts[0]["Body"].decode("utf-8"))
     assert body["fixtures"][0]["id"] == "1575165"
+    assert body["expiresAt"] == result["expiresAt"]
 
 
 def test_successful_empty_live_response_replaces_snapshot(monkeypatch) -> None:
@@ -136,3 +142,4 @@ def test_successful_empty_live_response_replaces_snapshot(monkeypatch) -> None:
 
     body = json.loads(puts[0]["Body"].decode("utf-8"))
     assert body["fixtures"] == []
+    assert body["expiresAt"]
