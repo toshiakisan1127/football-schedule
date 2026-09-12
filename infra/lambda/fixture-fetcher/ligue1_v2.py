@@ -13,6 +13,25 @@ PARIS = ZoneInfo("Europe/Paris")
 LOGGER = logging.getLogger(__name__)
 TEAM_ASSET_KEYS = ("logo", "image", "crest")
 
+LIGUE1_TEAM_LOGO_ALIASES = {
+    "Angers SCO": "Angers",
+    "AJ Auxerre": "Auxerre",
+    "ES Troyes AC": "Estac Troyes",
+    "Le Havre AC": "LE Havre",
+    "Le Mans FC": "Le Mans",
+    "Racing Club de Lens": "Lens",
+    "Lille OSC": "Lille",
+    "FC Lorient": "Lorient",
+    "Olympique Lyonnais": "Lyon",
+    "Olympique de Marseille": "Marseille",
+    "AS Monaco FC": "Monaco",
+    "OGC Nice": "Nice",
+    "Paris Saint-Germain FC": "Paris Saint Germain",
+    "Stade Rennais FC 1901": "Rennes",
+    "RC Strasbourg Alsace": "Strasbourg",
+    "Toulouse FC": "Toulouse",
+}
+
 
 class Ligue1V2SelectionError(RuntimeError):
     pass
@@ -166,12 +185,17 @@ def _backfill_team_metadata(
         if not _has_team_asset(team):
             team_name = team.get("name")
             if isinstance(team_name, str):
-                static_logo = get_static_team_logo("ligue1", team_name)
+                static_logo = _get_static_ligue1_logo(team_name)
                 if static_logo is not None:
                     team["logo"] = static_logo
 
         result[side] = team
     return result
+
+
+def _get_static_ligue1_logo(team_name: str) -> str | None:
+    canonical_name = LIGUE1_TEAM_LOGO_ALIASES.get(team_name, team_name)
+    return get_static_team_logo("ligue1", canonical_name)
 
 
 def _has_team_asset(team: dict[str, Any]) -> bool:
