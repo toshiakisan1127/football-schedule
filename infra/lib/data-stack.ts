@@ -35,15 +35,23 @@ export class DataStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     })
 
+    const fixtureFetcherCode = lambda.Code.fromAsset(path.join(process.cwd(), 'lambda', 'fixture-fetcher'), {
+      bundling: {
+        image: lambda.Runtime.PYTHON_3_13.bundlingImage,
+        command: ['bash', '-c', 'bash package.sh /asset-output'],
+      },
+    })
+
+    const commonFixtureEnvironment = {
+      DATA_BUCKET_NAME: props.dataBucket.bucketName,
+      API_FOOTBALL_KEY_PARAMETER_NAME: apiFootballKeyParameterName,
+      FIXTURE_OBJECT_PREFIX: 'data/fixtures',
+    }
+
     const fixtureFetcher = new lambda.Function(this, 'FixtureFetcher', {
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: 'split_handler.lambda_handler',
-      code: lambda.Code.fromAsset(path.join(process.cwd(), 'lambda', 'fixture-fetcher'), {
-        bundling: {
-          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
-          command: ['bash', '-c', 'bash package.sh /asset-output'],
-        },
-      }),
+      code: fixtureFetcherCode,
       description: 'Fetch and normalize football fixtures before publishing them to S3.',
       timeout: Duration.minutes(5),
       loggingFormat: lambda.LoggingFormat.JSON,
@@ -51,16 +59,34 @@ export class DataStack extends Stack {
       systemLogLevelV2: lambda.SystemLogLevel.INFO,
       logGroup: fixtureFetcherLogGroup,
       environment: {
-        DATA_BUCKET_NAME: props.dataBucket.bucketName,
-        API_FOOTBALL_KEY_PARAMETER_NAME: apiFootballKeyParameterName,
-        FIXTURE_OBJECT_PREFIX: 'data/fixtures',
+        ...commonFixtureEnvironment,
         LOOKBACK_DAYS: '1',
         LOOKAHEAD_DAYS: '21',
       },
     })
 
+    const liveFixtureFetcherLogGroup = new logs.LogGroup(this, 'LiveFixtureFetcherLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: RemovalPolicy.RETAIN,
+    })
+
+    const liveFixtureFetcher = new lambda.Function(this, 'LiveFixtureFetcher', {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: 'live_handler.lambda_handler',
+      code: fixtureFetcherCode,
+      description: 'Fetch live football scores and events before publishing them to S3.',
+      timeout: Duration.minutes(1),
+      loggingFormat: lambda.LoggingFormat.JSON,
+      applicationLogLevelV2: lambda.ApplicationLogLevel.INFO,
+      systemLogLevelV2: lambda.SystemLogLevel.INFO,
+      logGroup: liveFixtureFetcherLogGroup,
+      environment: commonFixtureEnvironment,
+    })
+
     props.dataBucket.grantPut(fixtureFetcher, 'data/*')
+    props.dataBucket.grantPut(liveFixtureFetcher, 'data/fixtures/live.json')
     apiFootballKeyParameter.grantRead(fixtureFetcher)
+    apiFootballKeyParameter.grantRead(liveFixtureFetcher)
 
     const batchErrorTopic = new sns.Topic(this, 'BatchErrorTopic', {
       displayName: 'Match Calendar batch errors',
@@ -94,6 +120,7 @@ export class DataStack extends Stack {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
     })
     fixtureFetcher.grantInvoke(schedulerRole)
+    liveFixtureFetcher.grantInvoke(schedulerRole)
 
     new scheduler.CfnSchedule(this, 'FixtureRefreshSchedule', {
       description: 'Refresh football fixture data daily at 05:00 JST.',
@@ -109,12 +136,29 @@ export class DataStack extends Stack {
       },
     })
 
+    new scheduler.CfnSchedule(this, 'LiveFixtureRefreshSchedule', {
+      description: 'Refresh live football scores and events every five minutes.',
+      flexibleTimeWindow: {
+        mode: 'OFF',
+      },
+      scheduleExpression: 'rate(5 minutes)',
+      state: 'ENABLED',
+      target: {
+        arn: liveFixtureFetcher.functionArn,
+        roleArn: schedulerRole.roleArn,
+      },
+    })
+
     new CfnOutput(this, 'ApiFootballKeyParameterName', {
       value: apiFootballKeyParameterName,
     })
 
     new CfnOutput(this, 'FixtureFetcherFunctionName', {
       value: fixtureFetcher.functionName,
+    })
+
+    new CfnOutput(this, 'LiveFixtureFetcherFunctionName', {
+      value: liveFixtureFetcher.functionName,
     })
 
     new CfnOutput(this, 'BatchErrorTopicArn', {
