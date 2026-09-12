@@ -19,17 +19,7 @@ export class DataStack extends Stack {
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props)
 
-    const kickoffApiKeyParameterName = '/football-schedule/kickoff-api-key'
     const apiFootballKeyParameterName = '/football-schedule/api-football-pro-key'
-
-    const kickoffApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(
-      this,
-      'KickoffApiKeyParameter',
-      {
-        parameterName: kickoffApiKeyParameterName,
-        version: 1,
-      },
-    )
 
     const apiFootballKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(
       this,
@@ -62,16 +52,14 @@ export class DataStack extends Stack {
       logGroup: fixtureFetcherLogGroup,
       environment: {
         DATA_BUCKET_NAME: props.dataBucket.bucketName,
-        API_KEY_PARAMETER_NAME: kickoffApiKeyParameterName,
         API_FOOTBALL_KEY_PARAMETER_NAME: apiFootballKeyParameterName,
         FIXTURE_OBJECT_PREFIX: 'data/fixtures',
         LOOKBACK_DAYS: '1',
-        LOOKAHEAD_DAYS: '30',
+        LOOKAHEAD_DAYS: '21',
       },
     })
 
     props.dataBucket.grantPut(fixtureFetcher, 'data/*')
-    kickoffApiKeyParameter.grantRead(fixtureFetcher)
     apiFootballKeyParameter.grantRead(fixtureFetcher)
 
     const batchErrorTopic = new sns.Topic(this, 'BatchErrorTopic', {
@@ -119,10 +107,6 @@ export class DataStack extends Stack {
         arn: fixtureFetcher.functionArn,
         roleArn: schedulerRole.roleArn,
       },
-    })
-
-    new CfnOutput(this, 'ApiKeyParameterName', {
-      value: kickoffApiKeyParameterName,
     })
 
     new CfnOutput(this, 'ApiFootballKeyParameterName', {

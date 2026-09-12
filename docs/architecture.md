@@ -12,6 +12,7 @@
 - La Liga
 - Bundesliga
 - Ligue 1
+- J1 League
 - 直近の日程表示
 - 大会フィルター
 - 複数チームのフィルター
@@ -23,7 +24,7 @@
 - 最終更新時刻表示
 - PWA
 
-UEFA Champions League、Europa League、Conference League、Serie A などは順次追加対象。J1は利用中のfixture providerで2026シーズンの取得可否を確認しながら検討する。
+UEFA Champions League、Europa League、Conference League、Serie A などは順次追加対象。
 
 ### Out of scope
 
@@ -39,7 +40,7 @@ UEFA Champions League、Europa League、Conference League、Serie A などは順
 ```text
                                       +----------------------+
                                       | SSM SecureString     |
-                                      | KickoffAPI API key   |
+                                      | API-Football API key |
                                       +----------+-----------+
                                                  |
                                                  v
@@ -49,9 +50,8 @@ UEFA Champions League、Europa League、Conference League、Serie A などは順
 +----------------------+                          |
                                                  v
                                       +-----------------------+
-                                      | KickoffAPI            |
-                                      | provider adapters     |
-                                      | v1 / v2               |
+                                      | API-Football v3       |
+                                      | /fixtures             |
                                       +-----------+-----------+
                                                   |
                                       normalize / JST filter
@@ -110,16 +110,19 @@ ERROR通知も取得処理本体から直接メール送信せず、CloudWatch L
 
 ## Provider strategy
 
-大会ごとにprovider adapterを持ち、KickoffAPI v1 / v2の差分をLambda内で吸収する。新規追加は可能な限りv2を優先する。
+現在の有効大会はAPI-Football v3へ統一する。
 
-- Premier League: 現行adapterを利用
-- La Liga: v2
-- Bundesliga: v2
-- Ligue 1: v2
+- Premier League: league `39`
+- La Liga: league `140`
+- Bundesliga: league `78`
+- Ligue 1: league `61`
+- J1 League: league `98`
 
-v2では必要に応じてcursor paginationやprovider固有のcanonical selectionを行い、アプリ共通schemaへ正規化する。
+欧州4リーグは共通の `GET /fixtures` 取得経路を使う。J1のみ、秋春制シーズンの識別子を終了年で扱うためseason変換を専用処理に閉じ込める。
 
-詳細は [`data-source.md`](data-source.md) と [`kickoffapi-laliga-v2-validation.md`](kickoffapi-laliga-v2-validation.md) を参照する。
+providerレスポンスをアプリ共通schemaへ正規化し、JSTの公開windowで再フィルタしてから検証・publishする。チームロゴはAPI-Footballのfixtureレスポンスを利用できるため、ロゴ取得専用の追加リクエストは行わない。
+
+移行前の比較結果と21日window採用理由は [`data-source.md`](data-source.md) を参照する。KickoffAPI v2のLa Liga検証は [`kickoffapi-laliga-v2-validation.md`](kickoffapi-laliga-v2-validation.md) に履歴として残す。
 
 ## Normalized fixture schema
 
@@ -205,6 +208,7 @@ data/
     laliga.json
     bundesliga.json
     ligue1.json
+    j1.json
 ```
 
 新しい大会を追加する場合も同じprefix配下に1大会1ファイルで追加する。
@@ -215,11 +219,13 @@ data/
 - Schedulerは `ENABLED`
 - Lambda runtimeはPython 3.13
 - Lambda timeoutは5分
-- 公開対象はJST基準で前日から30日先まで
+- 公開対象はJST基準で前日から21日先まで
 - Scheduler実行では全対象大会を更新する
 - 手動実行ではeventの `competitions` で対象大会を限定できる
 - 大会ごとに取得・正規化・validation・S3 publishを行う
 - 1大会が失敗しても、成功した大会のJSONは更新できる
+
+21日先はMVPのデータ品質を優先した上限とする。30日などへ延長する場合は、リーグごとにAPI-Footballの対象rangeを取得し、公式日程と対戦カード・UTC kickoffを照合してから変更する。
 
 ## Frontend state
 
@@ -253,7 +259,7 @@ CloudFrontはサイトと `data/*` の両方でAWS Managed cache policyを利用
 - Fixture Fetcher Lambda
 - Fixture Fetcher専用CloudWatch Log Group
 - EventBridge Scheduler
-- KickoffAPI credentialのSSM参照
+- API-Football credentialのSSM参照
 - fixture data bucketへの書き込み権限
 - CloudWatch Logs Subscription Filter（`level = ERROR`）
 - BatchErrorNotifier Lambda
@@ -309,19 +315,18 @@ GitHub ActionsからAWSへの認証はOIDCを利用し、長期Access Keyは使�
 ## Failure handling
 
 1. 外部APIの取得に失敗した大会は、その大会の公開JSONを更新しない
-2. provider固有のcanonical selectionに失敗した場合も対象大会を更新しない
-3. fixture documentのvalidationに失敗した場合も対象大会を更新しない
-4. 成功した他大会の更新は継続する
-5. Fixture Fetcherは処理状況をstructured logでCloudWatch Logsへ出力する
-6. `level = ERROR` のログだけをSubscription FilterでBatchErrorNotifierへ転送する
-7. BatchErrorNotifierはSNSへpublishし、購読済みメールアドレスへ通知する
-8. WARN / INFOはメール通知しない
-9. フロントはリーグごとの `generatedAt` をもとに最終更新時刻を表示する
-10. team logoの読み込みに失敗した場合、フロントでは画像だけを非表示にしてteam名は維持する
+2. fixtureの正規化またはfixture documentのvalidationに失敗した場合も対象大会を更新しない
+3. 成功した他大会の更新は継続する
+4. Fixture Fetcherは処理状況をstructured logでCloudWatch Logsへ出力する
+5. `level = ERROR` のログだけをSubscription FilterでBatchErrorNotifierへ転送する
+6. BatchErrorNotifierはSNSへpublishし、購読済みメールアドレスへ通知する
+7. WARN / INFOはメール通知しない
+8. フロントはリーグごとの `generatedAt` をもとに最終更新時刻を表示する
+9. team logoの読み込みに失敗した場合、フロントでは画像だけを非表示にしてteam名は維持する
 
 ## Security
 
-- KickoffAPI keyはSSM SecureString `/football-schedule/kickoff-api-key` で管理する
+- API-Football keyはSSM SecureString `/football-schedule/api-football-pro-key` で管理する
 - 外部APIキーはフロントへ渡さない
 - Fixture Fetcher Lambdaだけにfixture data bucketへのput権限を付与する
 - BatchErrorNotifier LambdaにはSNS Topicへのpublish権限だけを付与する
@@ -334,7 +339,7 @@ GitHub ActionsからAWSへの認証はOIDCを利用し、長期Access Keyは使�
 
 - UEFA Champions League / Europa League / Conference League
 - Serie A
-- J1 / J2 / J3 / カップ戦 / 代表戦
+- J2 / J3 / カップ戦 / 代表戦
 - お気に入りだけのホーム画面
 - カレンダー追加（ICS）
 - 試合開始・お気に入り試合のPush通知

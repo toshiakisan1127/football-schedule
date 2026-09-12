@@ -47,26 +47,30 @@ def test_epl_routes_to_api_football(monkeypatch) -> None:
         calls.append(kwargs)
         return [_raw_epl_fixture()]
 
-    monkeypatch.setattr(split_handler, "fetch_premier_league_fixtures", fake_fetch)
+    monkeypatch.setattr(split_handler, "fetch_fixtures", fake_fetch)
 
     fixtures = split_handler._fetch_competition_fixtures(
         api_key="pro-secret",
         competition=split_handler.legacy.Competition("epl", 39, "Premier League", "England"),
         season=2026,
         from_date=date(2026, 9, 13),
-        to_date=date(2026, 10, 13),
+        to_date=date(2026, 10, 4),
     )
 
     assert len(fixtures) == 1
     assert calls == [
         {
             "api_key": "pro-secret",
+            "league_id": 39,
             "season": 2026,
             "from_date": date(2026, 9, 13),
-            "to_date": date(2026, 10, 13),
+            "to_date": date(2026, 10, 4),
+            "competition_label": "Premier League",
         }
     ]
-    assert split_handler._provider_name(split_handler.legacy.Competition("epl", 39, "Premier League", "England")) == "API-Football"
+    assert split_handler._provider_name(
+        split_handler.legacy.Competition("epl", 39, "Premier League", "England")
+    ) == "API-Football"
 
 
 def test_epl_normalization_prefers_api_football_fixture_logos() -> None:

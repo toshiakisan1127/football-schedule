@@ -25,13 +25,12 @@ def raw_fixture(fixture_id: int) -> dict:
 
 def setup_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATA_BUCKET_NAME", "fixture-bucket")
-    monkeypatch.setenv("API_KEY_PARAMETER_NAME", "/football-schedule/kickoff-api-key")
     monkeypatch.setenv(
         "API_FOOTBALL_KEY_PARAMETER_NAME",
         "/football-schedule/api-football-pro-key",
     )
     monkeypatch.setenv("LOOKBACK_DAYS", "1")
-    monkeypatch.setenv("LOOKAHEAD_DAYS", "30")
+    monkeypatch.setenv("LOOKAHEAD_DAYS", "21")
     monkeypatch.setattr(handler, "_load_api_key", lambda _: "secret")
 
 
@@ -39,20 +38,21 @@ def test_manual_single_competition_only_fetches_and_publishes_that_competition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     setup_env(monkeypatch)
-    fetched: list[str] = []
+    fetched: list[dict] = []
     published: list[dict] = []
 
     def fake_fetch(**kwargs) -> list[dict]:
-        competition = kwargs["competition"]
-        fetched.append(competition.app_id)
+        fetched.append(kwargs)
         return [raw_fixture(3001)]
 
-    monkeypatch.setattr(handler, "_fetch_competition_fixtures", fake_fetch)
+    monkeypatch.setattr(split_handler, "fetch_fixtures", fake_fetch)
     monkeypatch.setattr(handler, "_publish_document", lambda **kwargs: published.append(kwargs))
 
     result = split_handler.lambda_handler({"competitions": ["bundesliga"]}, None)
 
-    assert fetched == ["bundesliga"]
+    assert len(fetched) == 1
+    assert fetched[0]["league_id"] == 78
+    assert fetched[0]["competition_label"] == "Bundesliga"
     assert len(published) == 1
     assert published[0]["object_key"] == "data/fixtures/bundesliga.json"
     document = json.loads(published[0]["body"].decode("utf-8"))
@@ -65,6 +65,49 @@ def test_manual_single_competition_only_fetches_and_publishes_that_competition(
         "bundesliga"
     }
     assert result["competitions"][0]["competition"] == "bundesliga"
+
+
+@pytest.mark.parametrize(
+    ("competition_id", "league_id", "competition_label"),
+    [
+        ("epl", 39, "Premier League"),
+        ("laliga", 140, "La Liga"),
+        ("bundesliga", 78, "Bundesliga"),
+        ("ligue1", 61, "Ligue 1"),
+    ],
+)
+def test_european_competitions_use_api_football_league_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    competition_id: str,
+    league_id: int,
+    competition_label: str,
+) -> None:
+    calls: list[dict] = []
+
+    def fake_fetch(**kwargs) -> list[dict]:
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(split_handler, "fetch_fixtures", fake_fetch)
+    competition = next(
+        competition
+        for competition in split_handler.COMPETITIONS
+        if competition.app_id == competition_id
+    )
+
+    fixtures = split_handler._fetch_competition_fixtures(
+        api_key="secret",
+        competition=competition,
+        season=2026,
+        from_date=handler.date(2026, 9, 13),
+        to_date=handler.date(2026, 10, 4),
+    )
+
+    assert fixtures == []
+    assert len(calls) == 1
+    assert calls[0]["league_id"] == league_id
+    assert calls[0]["competition_label"] == competition_label
+    assert calls[0]["season"] == 2026
 
 
 def test_manual_j1_only_uses_api_football_and_publishes_j1(
@@ -142,7 +185,7 @@ def test_unknown_competition_fails_before_provider_call(
         called = True
         return []
 
-    monkeypatch.setattr(handler, "_fetch_competition_fixtures", fake_fetch)
+    monkeypatch.setattr(split_handler, "_fetch_competition_fixtures", fake_fetch)
 
     with pytest.raises(handler.FixtureDataError, match="Unknown competition ID"):
         split_handler.lambda_handler({"competitions": ["serie-a"]}, None)
@@ -244,6 +287,6 @@ def test_failure_summary_emits_one_error_log(monkeypatch: pytest.MonkeyPatch, ca
     payload = json.loads(error_records[0].message)
     assert payload["failureCount"] == 5
     assert payload["failedCompetitions"] == ["epl", "laliga", "bundesliga", "ligue1", "j1"]
-    assert payload["provider"] == "mixed"
-    assert payload["primaryCause"] == "Provider rate limit exceeded (HTTP 429)"
+    assert payload["provider"] == "API-Football"
+    assert payload["primaryCause"] == "API-Football rate limit exceeded (HTTP 429)"
     assert payload["requestId"] == "request-123"
