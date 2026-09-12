@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -51,7 +52,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
 
     api_key = legacy._load_api_key(parameter_name)
     published: list[dict[str, Any]] = []
-    failures: list[tuple[str, Exception]] = []
+    failures: list[dict[str, Any]] = []
 
     for competition in competitions:
         try:
@@ -81,11 +82,29 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
                 len(body),
             )
         except Exception as exc:
-            LOGGER.exception("Competition refresh failed: app_id=%s", competition.app_id)
-            failures.append((competition.app_id, exc))
+            LOGGER.warning(
+                "Competition refresh failed: app_id=%s error_type=%s error=%s",
+                competition.app_id,
+                type(exc).__name__,
+                exc,
+            )
+            failures.append(_failure_detail(competition.app_id, exc))
 
     if failures:
-        summary = ", ".join(f"{competition_id}: {error}" for competition_id, error in failures)
+        alert = {
+            "level": "ERROR",
+            "message": "Fixture refresh completed with failures",
+            "requestId": getattr(context, "aws_request_id", None),
+            "provider": "KickoffAPI",
+            "failureCount": len(failures),
+            "failedCompetitions": [failure["competition"] for failure in failures],
+            "primaryCause": _primary_cause(failures),
+            "failures": failures,
+        }
+        LOGGER.error(json.dumps(alert, ensure_ascii=False, separators=(",", ":")))
+        summary = ", ".join(
+            f"{failure['competition']}: {failure['errorMessage']}" for failure in failures
+        )
         raise legacy.FixtureDataError(f"One or more competition refreshes failed: {summary}")
 
     return {
@@ -240,3 +259,29 @@ def _object_key(prefix: str, competition_id: str) -> str:
     if filename is None:
         raise legacy.FixtureDataError(f"No fixture object filename configured: {competition_id}")
     return f"{prefix}/{filename}" if prefix else filename
+
+
+def _failure_detail(competition_id: str, exc: Exception) -> dict[str, Any]:
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+    return {
+        "competition": competition_id,
+        "errorType": type(exc).__name__,
+        "errorMessage": str(exc),
+        "statusCode": status_code,
+        "stackTrace": traceback.format_exception(type(exc), exc, exc.__traceback__),
+    }
+
+
+def _primary_cause(failures: list[dict[str, Any]]) -> str:
+    status_codes = {failure.get("statusCode") for failure in failures}
+    if status_codes == {429}:
+        return "KickoffAPI rate limit exceeded (HTTP 429)"
+    if len(status_codes) == 1:
+        status_code = next(iter(status_codes))
+        if status_code is not None:
+            return f"KickoffAPI request failed (HTTP {status_code})"
+
+    error_types = {str(failure.get("errorType", "UnknownError")) for failure in failures}
+    if len(error_types) == 1:
+        return next(iter(error_types))
+    return "Multiple errors"
