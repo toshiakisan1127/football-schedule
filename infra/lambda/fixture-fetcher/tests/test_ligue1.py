@@ -46,11 +46,14 @@ def test_ligue1_uses_api_football_range_fetcher(monkeypatch) -> None:
     ]
 
 
-def test_scheduler_default_includes_ligue1() -> None:
+def test_scheduler_default_includes_all_supported_competitions() -> None:
     assert [competition.app_id for competition in split_handler._selected_competitions({})] == [
         "epl",
         "laliga",
         "bundesliga",
         "ligue1",
         "j1",
+        "ucl",
+        "uel",
+        "uecl",
     ]

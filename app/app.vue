@@ -42,6 +42,7 @@ const showResults = ref(false)
 const japaneseTeamsOnly = ref(false)
 const currentAndUpcomingOnly = ref(false)
 const shareStatus = ref<ShareStatus>('idle')
+const expandedLiveFixtures = ref<Set<string>>(new Set())
 let currentDateTimer: ReturnType<typeof setInterval> | undefined
 let shareStatusTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -280,8 +281,22 @@ const timeLabel = (iso: string) =>
     hour12: false,
   }).format(new Date(iso))
 
+const liveClockLabel = (fixture: Fixture) => {
+  if (fixture.live?.elapsed !== null && fixture.live?.elapsed !== undefined) {
+    return fixture.live.extra
+      ? `${fixture.live.elapsed}+${fixture.live.extra}'`
+      : `${fixture.live.elapsed}'`
+  }
+  if (fixture.live?.period === 'HT') return 'HT'
+  return null
+}
+
 const statusLabel = (fixture: Fixture) => {
-  if (fixture.status === 'live') return '試合中'
+  if (fixture.status === 'live') {
+    const clock = liveClockLabel(fixture)
+    const score = fixture.score ? `${fixture.score.home}–${fixture.score.away}` : null
+    return ['LIVE', clock, score].filter(Boolean).join(' · ')
+  }
   if (fixture.status === 'postponed') return '延期'
   if (fixture.status === 'cancelled') return '中止'
   return null
@@ -290,6 +305,19 @@ const statusLabel = (fixture: Fixture) => {
 const resultLabel = (fixture: Fixture) => {
   if (!showResults.value || fixture.status !== 'finished' || !fixture.score) return null
   return `${fixture.score.home}–${fixture.score.away}`
+}
+
+const isLiveExpanded = (fixture: Fixture) => expandedLiveFixtures.value.has(fixture.id)
+
+const toggleLiveFixture = (fixture: Fixture) => {
+  if (fixture.status !== 'live' || !fixture.live) return
+  const next = new Set(expandedLiveFixtures.value)
+  if (next.has(fixture.id)) {
+    next.delete(fixture.id)
+  } else {
+    next.add(fixture.id)
+  }
+  expandedLiveFixtures.value = next
 }
 
 const filteredFixtures = computed(() => {
@@ -659,7 +687,18 @@ onUnmounted(() => {
         <h2>{{ group.label }}</h2>
 
         <div class="fixture-list">
-          <div v-for="fixture in group.fixtures" :key="fixture.id" class="fixture-row">
+          <div
+            v-for="fixture in group.fixtures"
+            :key="fixture.id"
+            class="fixture-row"
+            :class="{ 'fixture-row--live': fixture.status === 'live' }"
+            :role="fixture.status === 'live' ? 'button' : undefined"
+            :tabindex="fixture.status === 'live' ? 0 : undefined"
+            :aria-expanded="fixture.status === 'live' ? isLiveExpanded(fixture) : undefined"
+            @click="toggleLiveFixture(fixture)"
+            @keydown.enter.prevent="toggleLiveFixture(fixture)"
+            @keydown.space.prevent="toggleLiveFixture(fixture)"
+          >
             <time :datetime="fixture.kickoff" class="kickoff">
               {{ timeLabel(fixture.kickoff) }}
             </time>
@@ -713,6 +752,11 @@ onUnmounted(() => {
                 {{ statusLabel(fixture) }}
               </span>
             </div>
+
+            <LiveFixtureEvents
+              v-if="fixture.status === 'live' && fixture.live && isLiveExpanded(fixture)"
+              :events="fixture.live.events"
+            />
           </div>
         </div>
       </article>

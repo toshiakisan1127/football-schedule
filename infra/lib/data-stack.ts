@@ -62,6 +62,36 @@ export class DataStack extends Stack {
     props.dataBucket.grantPut(fixtureFetcher, 'data/*')
     apiFootballKeyParameter.grantRead(fixtureFetcher)
 
+    const liveFixtureFetcherLogGroup = new logs.LogGroup(this, 'LiveFixtureFetcherLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: RemovalPolicy.RETAIN,
+    })
+
+    const liveFixtureFetcher = new lambda.Function(this, 'LiveFixtureFetcher', {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: 'live_handler.lambda_handler',
+      code: lambda.Code.fromAsset(path.join(process.cwd(), 'lambda', 'fixture-fetcher'), {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
+          command: ['bash', '-c', 'bash package.sh /asset-output'],
+        },
+      }),
+      description: 'Fetch live football scores and events before publishing them to S3.',
+      timeout: Duration.minutes(1),
+      loggingFormat: lambda.LoggingFormat.JSON,
+      applicationLogLevelV2: lambda.ApplicationLogLevel.INFO,
+      systemLogLevelV2: lambda.SystemLogLevel.INFO,
+      logGroup: liveFixtureFetcherLogGroup,
+      environment: {
+        DATA_BUCKET_NAME: props.dataBucket.bucketName,
+        API_FOOTBALL_KEY_PARAMETER_NAME: apiFootballKeyParameterName,
+        LIVE_FIXTURE_OBJECT_KEY: 'data/fixtures/live.json',
+      },
+    })
+
+    props.dataBucket.grantPut(liveFixtureFetcher, 'data/fixtures/live.json')
+    apiFootballKeyParameter.grantRead(liveFixtureFetcher)
+
     const batchErrorTopic = new sns.Topic(this, 'BatchErrorTopic', {
       displayName: 'Match Calendar batch errors',
     })
@@ -90,10 +120,17 @@ export class DataStack extends Stack {
       filterPattern: logs.FilterPattern.stringValue('$.level', '=', 'ERROR'),
     })
 
+    new logs.SubscriptionFilter(this, 'LiveFixtureFetcherErrorSubscription', {
+      logGroup: liveFixtureFetcherLogGroup,
+      destination: new logsDestinations.LambdaDestination(errorNotifier),
+      filterPattern: logs.FilterPattern.stringValue('$.level', '=', 'ERROR'),
+    })
+
     const schedulerRole = new iam.Role(this, 'FixtureSchedulerRole', {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
     })
     fixtureFetcher.grantInvoke(schedulerRole)
+    liveFixtureFetcher.grantInvoke(schedulerRole)
 
     new scheduler.CfnSchedule(this, 'FixtureRefreshSchedule', {
       description: 'Refresh football fixture data daily at 05:00 JST.',
@@ -109,12 +146,29 @@ export class DataStack extends Stack {
       },
     })
 
+    new scheduler.CfnSchedule(this, 'LiveFixtureRefreshSchedule', {
+      description: 'Refresh live football scores and events every five minutes.',
+      flexibleTimeWindow: {
+        mode: 'OFF',
+      },
+      scheduleExpression: 'rate(5 minutes)',
+      state: 'ENABLED',
+      target: {
+        arn: liveFixtureFetcher.functionArn,
+        roleArn: schedulerRole.roleArn,
+      },
+    })
+
     new CfnOutput(this, 'ApiFootballKeyParameterName', {
       value: apiFootballKeyParameterName,
     })
 
     new CfnOutput(this, 'FixtureFetcherFunctionName', {
       value: fixtureFetcher.functionName,
+    })
+
+    new CfnOutput(this, 'LiveFixtureFetcherFunctionName', {
+      value: liveFixtureFetcher.functionName,
     })
 
     new CfnOutput(this, 'BatchErrorTopicArn', {
