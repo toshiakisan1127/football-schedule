@@ -1,37 +1,38 @@
 # Fixture fetcher Lambda
 
-Python 3.13 Lambda that fetches football fixtures, normalizes provider-specific responses into the application fixture contract, validates each competition document, and publishes league-specific JSON to S3 only when the refresh is valid.
+Python 3.13 Lambda that fetches football fixtures, normalizes provider responses into the application fixture contract, validates each competition document, and publishes league-specific JSON to S3 only when the refresh is valid.
 
-## Providers
+## Provider
 
-- Premier League: KickoffAPI v1
-- La Liga: KickoffAPI v2
-- Bundesliga: KickoffAPI v2
-- Ligue 1: KickoffAPI v2
-- J1 League: API-Football v3 (`league=98`)
+All enabled competitions use API-Football v3:
 
-KickoffAPI v2 competitions can require competition-specific canonical selection because provider feeds may contain duplicate or placeholder rows. J1 is intentionally isolated behind the API-Football adapter so the provider can be changed independently from the frontend contract.
+- Premier League: `league=39`
+- La Liga: `league=140`
+- Bundesliga: `league=78`
+- Ligue 1: `league=61`
+- J1 League: `league=98`
 
-For the current autumn-spring J1 season, API-Football identifies 2026/27 as `season=2027`. The adapter derives the ending year from the fixture window, follows API-Football paging, and uses the team logo URLs already included in the fixture response. Venue data is not published into the application fixture schema.
+European competitions use the shared `fetch_fixtures` path. J1 uses the same API-Football endpoint with season handling isolated because API-Football identifies the autumn-spring 2026/27 season as `season=2027`.
 
-See [`../../../docs/data-source.md`](../../../docs/data-source.md) for provider behavior and credential details.
+The fixture response already contains the team IDs, names, kickoff timestamps, status, scores, and team logo URLs needed by the application. Venue data is not published into the application fixture schema.
+
+See [`../../../docs/data-source.md`](../../../docs/data-source.md) for provider behavior, migration validation, and credential details.
 
 ## Runtime
 
 - Runtime: Python 3.13
 - Schedule: daily at 05:00 JST via EventBridge Scheduler
-- Window: 1 day lookback / 30 days lookahead in JST
+- Window: 1 day lookback / 21 days lookahead in JST
 - Output: league-specific files under `data/fixtures/`
-- KickoffAPI key: SSM SecureString `/football-schedule/kickoff-api-key`
 - API-Football Pro key: SSM SecureString `/football-schedule/api-football-pro-key`
 
-Team logos are preserved when the provider fixture response contains `logo`, `image`, or `crest`. Missing logos are omitted; the Lambda does not make an additional API request only to fetch a logo.
+Team logos are preserved from the API-Football fixture response when available. Missing logos may use the existing static mapping fallback; the Lambda does not make an additional API request only to fetch a logo.
 
 ## Publish safety
 
 Before S3 upload, each normalized document is validated against schema version 1. Validation includes fixture IDs, competition IDs, team consistency, kickoff timestamps and range, status values, scores, sort order, and optional team logo HTTP(S) URLs.
 
-If provider fetch, provider-specific validation, normalization, or document validation fails, that competition is not uploaded, keeping the previous known-good S3 object available to the frontend. Other competition documents can still publish successfully during the same run; the invocation then emits one aggregated ERROR summary.
+If provider fetch, normalization, or document validation fails, that competition is not uploaded, keeping the previous known-good S3 object available to the frontend. Other competition documents can still publish successfully during the same run; the invocation then emits one aggregated ERROR summary.
 
 ## Packaging
 
