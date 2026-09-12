@@ -94,6 +94,36 @@ def test_build_live_document_normalizes_score_status_and_events() -> None:
     }
 
 
+def test_normalize_event_preserves_goal_detail_and_var_events() -> None:
+    missed_penalty = live_handler._normalize_event(
+        {
+            "time": {"elapsed": 25, "extra": None},
+            "team": {"id": 192, "name": "1. FC Köln"},
+            "player": {"id": 1, "name": "Penalty Taker"},
+            "assist": {"id": None, "name": None},
+            "type": "Goal",
+            "detail": "Missed Penalty",
+        }
+    )
+    var_event = live_handler._normalize_event(
+        {
+            "time": {"elapsed": 31, "extra": None},
+            "team": {"id": 192, "name": "1. FC Köln"},
+            "player": {"id": 1, "name": "Penalty Taker"},
+            "assist": {"id": None, "name": None},
+            "type": "Var",
+            "detail": "Goal cancelled",
+        }
+    )
+
+    assert missed_penalty is not None
+    assert missed_penalty["type"] == "goal"
+    assert missed_penalty["detail"] == "Missed Penalty"
+    assert var_event is not None
+    assert var_event["type"] == "var"
+    assert var_event["detail"] == "Goal cancelled"
+
+
 def test_lambda_handler_publishes_complete_snapshot(monkeypatch) -> None:
     monkeypatch.setenv("DATA_BUCKET_NAME", "fixtures-bucket")
     monkeypatch.setenv("API_FOOTBALL_KEY_PARAMETER_NAME", "/football/key")
