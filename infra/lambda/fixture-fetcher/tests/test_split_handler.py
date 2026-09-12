@@ -74,6 +74,9 @@ def test_manual_single_competition_only_fetches_and_publishes_that_competition(
         ("laliga", 140, "La Liga"),
         ("bundesliga", 78, "Bundesliga"),
         ("ligue1", 61, "Ligue 1"),
+        ("ucl", 2, "UEFA Champions League"),
+        ("uel", 3, "UEFA Europa League"),
+        ("uecl", 848, "UEFA Conference League"),
     ],
 )
 def test_european_competitions_use_api_football_league_ids(
@@ -108,6 +111,37 @@ def test_european_competitions_use_api_football_league_ids(
     assert calls[0]["league_id"] == league_id
     assert calls[0]["competition_label"] == competition_label
     assert calls[0]["season"] == 2026
+
+
+@pytest.mark.parametrize(
+    ("competition_id", "expected_span_days"),
+    [
+        ("laliga", 22),
+        ("j1", 22),
+        ("ucl", 36),
+        ("uel", 36),
+        ("uecl", 36),
+    ],
+)
+def test_competition_type_controls_fixture_window(
+    monkeypatch: pytest.MonkeyPatch,
+    competition_id: str,
+    expected_span_days: int,
+) -> None:
+    setup_env(monkeypatch)
+    calls: list[dict] = []
+
+    def fake_fetch(**kwargs) -> list[dict]:
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(split_handler, "_fetch_competition_fixtures", fake_fetch)
+    monkeypatch.setattr(handler, "_publish_document", lambda **kwargs: None)
+
+    split_handler.lambda_handler({"competitions": [competition_id]}, None)
+
+    assert len(calls) == 1
+    assert (calls[0]["to_date"] - calls[0]["from_date"]).days == expected_span_days
 
 
 def test_manual_j1_only_uses_api_football_and_publishes_j1(
@@ -210,6 +244,9 @@ def test_scheduler_style_event_refreshes_all_competitions(
         "bundesliga": 3001,
         "ligue1": 4001,
         "j1": 5001,
+        "ucl": 6001,
+        "uel": 7001,
+        "uecl": 8001,
     }
 
     def fake_fetch(**kwargs) -> list[dict]:
@@ -222,15 +259,18 @@ def test_scheduler_style_event_refreshes_all_competitions(
 
     result = split_handler.lambda_handler({"source": "aws.scheduler"}, None)
 
-    assert fetched == ["epl", "laliga", "bundesliga", "ligue1", "j1"]
+    assert fetched == ["epl", "laliga", "bundesliga", "ligue1", "j1", "ucl", "uel", "uecl"]
     assert [item["object_key"] for item in published] == [
         "data/fixtures/premier-league.json",
         "data/fixtures/laliga.json",
         "data/fixtures/bundesliga.json",
         "data/fixtures/ligue1.json",
         "data/fixtures/j1.json",
+        "data/fixtures/champions-league.json",
+        "data/fixtures/europa-league.json",
+        "data/fixtures/conference-league.json",
     ]
-    assert result["fixtureCount"] == 5
+    assert result["fixtureCount"] == 8
 
 
 def test_one_competition_failure_does_not_block_other_competition_publishes(
@@ -238,7 +278,15 @@ def test_one_competition_failure_does_not_block_other_competition_publishes(
 ) -> None:
     setup_env(monkeypatch)
     published: list[dict] = []
-    fixture_ids = {"epl": 1001, "bundesliga": 3001, "ligue1": 4001, "j1": 5001}
+    fixture_ids = {
+        "epl": 1001,
+        "bundesliga": 3001,
+        "ligue1": 4001,
+        "j1": 5001,
+        "ucl": 6001,
+        "uel": 7001,
+        "uecl": 8001,
+    }
 
     def fake_fetch(**kwargs) -> list[dict]:
         competition = kwargs["competition"]
@@ -257,6 +305,9 @@ def test_one_competition_failure_does_not_block_other_competition_publishes(
         "data/fixtures/bundesliga.json",
         "data/fixtures/ligue1.json",
         "data/fixtures/j1.json",
+        "data/fixtures/champions-league.json",
+        "data/fixtures/europa-league.json",
+        "data/fixtures/conference-league.json",
     ]
 
 
@@ -285,8 +336,17 @@ def test_failure_summary_emits_one_error_log(monkeypatch: pytest.MonkeyPatch, ca
     error_records = [record for record in caplog.records if record.levelname == "ERROR"]
     assert len(error_records) == 1
     payload = json.loads(error_records[0].message)
-    assert payload["failureCount"] == 5
-    assert payload["failedCompetitions"] == ["epl", "laliga", "bundesliga", "ligue1", "j1"]
+    assert payload["failureCount"] == 8
+    assert payload["failedCompetitions"] == [
+        "epl",
+        "laliga",
+        "bundesliga",
+        "ligue1",
+        "j1",
+        "ucl",
+        "uel",
+        "uecl",
+    ]
     assert payload["provider"] == "API-Football"
     assert payload["primaryCause"] == "API-Football rate limit exceeded (HTTP 429)"
     assert payload["requestId"] == "request-123"

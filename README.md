@@ -36,6 +36,9 @@ mainブランチで直近に完了したWorkflowの実行時間です。Workflow
 - Bundesliga
 - Ligue 1
 - J1 League
+- UEFA Champions League
+- UEFA Europa League
+- UEFA Conference League
 
 主な機能:
 
@@ -52,7 +55,7 @@ mainブランチで直近に完了したWorkflowの実行時間です。Workflow
 - データ最終更新時刻の表示
 - PWA
 
-UEFA Champions League、Europa League、Conference League、Serie Aなどを順次追加予定です。
+Serie Aなどを順次追加予定です。
 
 ## アーキテクチャ
 
@@ -116,9 +119,9 @@ Alert email
 
 フロントエンドからAPI-Footballを直接呼びません。Lambdaが毎日05:00 JSTに日程を取得し、アプリ独自のJSON形式へ正規化・検証したうえで、リーグごとのJSONをS3へ保存します。ブラウザはCloudFront経由で静的サイトと `data/fixtures/*.json` を読むだけです。
 
-現在の取得範囲は**前日から21日先まで**です。大会ごとに取得・検証・publishするため、ある大会が失敗しても成功した大会は更新できます。失敗した大会は直前の正常なJSONを維持します。
+取得範囲は大会タイプで分けています。国内リーグは**前日から21日先まで**、CL / EL / ECLはリーグフェーズの試合間隔を考慮して**前日から35日先まで**です。大会ごとに取得・検証・publishするため、ある大会が失敗しても成功した大会は更新できます。失敗した大会は直前の正常なJSONを維持します。
 
-21日先はデータ品質を優先したMVPの上限です。将来30日などへ伸ばす場合は、リーグごとにAPI-Footballの取得結果を公式日程と照合してから変更します。
+国内リーグの21日先はデータ品質を優先したMVPの上限です。特にLa Ligaのように先の日程・時刻が未確定な場合があるため、UEFA大会の35日windowを国内リーグへは広げません。
 
 詳細は [`docs/architecture.md`](docs/architecture.md) と [`docs/data-source.md`](docs/data-source.md) を参照してください。以前のLa Liga / KickoffAPI v2の検証内容は [`docs/kickoffapi-laliga-v2-validation.md`](docs/kickoffapi-laliga-v2-validation.md) に履歴として残しています。
 
@@ -170,4 +173,4 @@ Fixture Fetcher LambdaはJSON形式でCloudWatch Logsへ出力し、`level = ERR
 
 ## Status
 
-Premier League / La Liga / Bundesliga / Ligue 1 / J1 Leagueの日程取得・公開まで稼働中。機能追加と運用改善を継続しています。
+Premier League / La Liga / Bundesliga / Ligue 1 / J1 League / UEFA Champions League / UEFA Europa League / UEFA Conference Leagueの日程取得・公開に対応。機能追加と運用改善を継続しています。
