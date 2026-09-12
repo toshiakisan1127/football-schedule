@@ -26,6 +26,7 @@ const {
   data,
   status,
   error,
+  refreshLive,
 } = await useFixtureDocuments(baseURL)
 
 const selectedFilter = ref<DateFilter>('all')
@@ -477,6 +478,7 @@ onMounted(() => {
   currentDate.value = new Date()
   currentDateTimer = setInterval(() => {
     currentDate.value = new Date()
+    void refreshLive()
   }, 60_000)
 
   const savedTheme = localStorage.getItem('football-schedule-theme')
@@ -659,61 +661,12 @@ onUnmounted(() => {
         <h2>{{ group.label }}</h2>
 
         <div class="fixture-list">
-          <div v-for="fixture in group.fixtures" :key="fixture.id" class="fixture-row">
-            <time :datetime="fixture.kickoff" class="kickoff">
-              {{ timeLabel(fixture.kickoff) }}
-            </time>
-
-            <div class="fixture-main">
-              <p class="competition">
-                {{ fixture.competition.country }} · {{ fixture.competition.name }}
-              </p>
-              <p class="matchup">
-                <span class="team-name" :title="japanesePlayersTitle(fixture.home.name)">
-                  <img
-                    v-if="fixture.home.logo"
-                    class="team-logo"
-                    :src="fixture.home.logo"
-                    :alt="`${fixture.home.name} ロゴ`"
-                    width="18"
-                    height="18"
-                    loading="lazy"
-                    decoding="async"
-                    @error="handleTeamLogoError"
-                  >
-                  <span>{{ teamDisplayName(fixture.home.name) }}</span>
-                </span>
-                <span class="versus">vs</span>
-                <span class="team-name" :title="japanesePlayersTitle(fixture.away.name)">
-                  <img
-                    v-if="fixture.away.logo"
-                    class="team-logo"
-                    :src="fixture.away.logo"
-                    :alt="`${fixture.away.name} ロゴ`"
-                    width="18"
-                    height="18"
-                    loading="lazy"
-                    decoding="async"
-                    @error="handleTeamLogoError"
-                  >
-                  <span>{{ teamDisplayName(fixture.away.name) }}</span>
-                </span>
-              </p>
-            </div>
-
-            <div class="fixture-side">
-              <span v-if="resultLabel(fixture)" class="fixture-result">
-                {{ resultLabel(fixture) }}
-              </span>
-              <span
-                v-else-if="statusLabel(fixture)"
-                class="fixture-status"
-                :class="{ 'fixture-status--live': fixture.status === 'live' }"
-              >
-                {{ statusLabel(fixture) }}
-              </span>
-            </div>
-          </div>
+          <FixtureRow
+            v-for="fixture in group.fixtures"
+            :key="fixture.id"
+            :fixture="fixture"
+            :show-results="showResults"
+          />
         </div>
       </article>
 
