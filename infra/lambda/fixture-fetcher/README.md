@@ -26,11 +26,12 @@ See [`../../../docs/data-source.md`](../../../docs/data-source.md) for provider 
 - Runtime: Python 3.13
 - Schedule: daily at 05:00 JST via EventBridge Scheduler
 - Domestic-league window: 1 day lookback / 21 days lookahead in JST
+- J1 League window: 1 day lookback / 100 days lookahead in JST
 - UEFA competition window: 1 day lookback / 35 days lookahead in JST
 - Output: league-specific files under `data/fixtures/`
 - API-Football Pro key: SSM SecureString `/football-schedule/api-football-pro-key`
 
-The longer UEFA lookahead is intentional because league-phase matchdays can be more than three weeks apart. Domestic leagues remain at 21 days to avoid surfacing provisional kickoff times too far ahead, especially in competitions such as La Liga.
+The longer UEFA lookahead is intentional because league-phase matchdays can be more than three weeks apart. J1 uses a 100-day lookahead because its kickoff schedule is published substantially further ahead than many European domestic leagues. Other domestic leagues remain at 21 days to avoid surfacing provisional kickoff times too far ahead, especially in competitions such as La Liga.
 
 Team logos are preserved from the API-Football fixture response when available. Missing logos may use the existing static mapping fallback; the Lambda does not make an additional API request only to fetch a logo.
 
