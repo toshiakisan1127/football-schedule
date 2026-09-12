@@ -59,7 +59,7 @@ const isNullableString = (value: unknown): value is string | null =>
 
 const isLiveEvent = (value: unknown): value is LiveFixtureEvent => {
   if (!isRecord(value)) return false
-  if (!['goal', 'card', 'substitution'].includes(String(value.type))) return false
+  if (!['goal', 'card', 'substitution', 'var'].includes(String(value.type))) return false
   if (!isNullableString(value.detail)) return false
   if (!isNullableNumber(value.elapsed) || !isNullableNumber(value.extra)) return false
   if (!isNullableString(value.teamId) || !isNullableString(value.teamName)) return false
