@@ -194,7 +194,7 @@ export const useFixtureDocuments = async (baseURL: string) => {
 
   const liveRefreshInterval = () => {
     const current = liveDocument.value ?? null
-    if (!isFreshLiveDocument(current)) return LIVE_IDLE_REFRESH_INTERVAL_MS
+    if (!current || !isFreshLiveDocument(current)) return LIVE_IDLE_REFRESH_INTERVAL_MS
     return current.fixtures.length > 0
       ? LIVE_ACTIVE_REFRESH_INTERVAL_MS
       : LIVE_IDLE_REFRESH_INTERVAL_MS
