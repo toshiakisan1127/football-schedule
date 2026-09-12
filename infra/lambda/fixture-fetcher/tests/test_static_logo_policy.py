@@ -11,12 +11,16 @@ def _fixture(home: str, away: str, *, home_logo: str | None = None, away_logo: s
     if away_logo is not None:
         away_team["logo"] = away_logo
     return {
-        "id": "fx-1",
-        "date": "2026-09-12T13:30:00Z",
-        "status": "scheduled",
-        "home": home_team,
-        "away": away_team,
-        "score": None,
+        "fixture": {
+            "id": "fx-1",
+            "date": "2026-09-12T13:30:00Z",
+            "status": {"short": "NS"},
+        },
+        "teams": {
+            "home": home_team,
+            "away": away_team,
+        },
+        "goals": {"home": None, "away": None},
     }
 
 
