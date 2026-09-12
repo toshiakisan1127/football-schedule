@@ -4,7 +4,7 @@ The fixture fetcher publishes application-owned, league-specific JSON documents 
 
 ## Enabled competitions
 
-- Premier League (`epl` / KickoffAPI v1 league `39`)
+- Premier League (`epl` / API-Football v3 league `39`)
 - La Liga (`laliga` / KickoffAPI v2 league `es.1`)
 - Bundesliga (`bundesliga` / KickoffAPI v2 league `de.1`)
 - Ligue 1 (`ligue1` / KickoffAPI v2 league `fr.1`)
@@ -16,9 +16,11 @@ Application competition IDs are stable app-owned slugs and do not depend on prov
 
 ### Premier League
 
-Premier League currently stays on KickoffAPI v1. The fetcher requests league `39` with season, `from`, and `to`, and follows `paging.current` / `paging.total` when multiple pages are returned.
+Premier League uses API-Football v3 league `39`. The fetcher requests one range with `league`, `season`, `from`, and `to`; the fixture response already contains the team IDs, names, status, score, round, and team logo URLs needed by the application.
 
-v1 is deprecated and is scheduled to sunset on 1 January 2027, so migration to KickoffAPI v2 or another provider remains a separate task.
+Before migration, the 2026-09-13 through 2026-10-13 range was compared against the existing KickoffAPI v1 feed. All 23 fixtures matched on fixture ID, home/away team IDs, UTC kickoff, round, status, and total fixture count. The main differences were response shape and the logo URL host. This validation is also recorded in issue #142.
+
+The migration removes the remaining Premier League dependency on KickoffAPI v1. No extra API call is made for logos.
 
 ### La Liga
 
@@ -27,6 +29,8 @@ La Liga uses KickoffAPI v2 with league `es.1`. The provider can expose multiple 
 ### Bundesliga and Ligue 1
 
 Bundesliga and Ligue 1 use KickoffAPI v2. Both keep provider-specific canonical selection in the Lambda so duplicate, placeholder, or wall-clock rows are resolved before data reaches the frontend.
+
+API-Football was also evaluated for these leagues, but future fixtures differed from the existing validated KickoffAPI v2 schedules in the tested range, so they remain on KickoffAPI v2 for now.
 
 ### J1 League
 
@@ -41,11 +45,11 @@ J1 uses API-Football v3 because the current KickoffAPI feed does not provide the
 
 API-Football identifies the autumn-spring J1 season by its ending year, so dates in the second half of 2026 map to `season=2027`.
 
-The fixture response already includes team IDs, names, kickoff timestamps, status, scores, and team logo URLs. For J1, provider-specific normalization prefers the API-Football team logo when present; if it is missing, the existing static logo mapping remains as fallback. No additional logo request is required.
+The fixture response already includes team IDs, names, kickoff timestamps, status, scores, and team logo URLs. For API-Football competitions, provider-specific normalization prefers the API-Football team logo when present; if it is missing, the existing static logo mapping remains as fallback. No additional logo request is required.
 
 Venue fields are intentionally not included in the application fixture schema. During source validation, some venue values were less reliable than the fixture date/team data, and venue display is not required for the current product.
 
-The exact curl commands, Free-plan restriction response, Pro response shape, kickoff-time spot checks, and the deployed `page` parameter failure are recorded in [`api-football-j1-validation.md`](api-football-j1-validation.md).
+The exact J1 curl commands, Free-plan restriction response, Pro response shape, kickoff-time spot checks, and the deployed `page` parameter failure are recorded in [`api-football-j1-validation.md`](api-football-j1-validation.md).
 
 ## Publication window
 
