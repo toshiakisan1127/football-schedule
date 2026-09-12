@@ -110,11 +110,7 @@ const mergeLiveFixture = (
 }
 
 export const useFixtureDocuments = async (baseURL: string) => {
-  const {
-    data: documents,
-    status,
-    error,
-  } = await useAsyncData<FixtureDocument[]>(
+  const documentsAsyncData = useAsyncData<FixtureDocument[]>(
     'fixture-documents',
     async () => {
       const results = await Promise.allSettled(
@@ -143,10 +139,7 @@ export const useFixtureDocuments = async (baseURL: string) => {
     { server: false },
   )
 
-  const {
-    data: liveDocument,
-    refresh: refreshLiveDocument,
-  } = await useAsyncData<LiveFixtureDocument | null>(
+  const liveAsyncData = useAsyncData<LiveFixtureDocument | null>(
     'live-fixture-document',
     async () => {
       try {
@@ -161,6 +154,8 @@ export const useFixtureDocuments = async (baseURL: string) => {
     { server: false },
   )
 
+  const { data: liveDocument, refresh: refreshLiveDocument } = liveAsyncData
+
   let liveRefreshTimer: ReturnType<typeof setInterval> | undefined
   onMounted(() => {
     liveRefreshTimer = setInterval(() => {
@@ -170,6 +165,11 @@ export const useFixtureDocuments = async (baseURL: string) => {
   onUnmounted(() => {
     if (liveRefreshTimer) clearInterval(liveRefreshTimer)
   })
+
+  const [{ data: documents, status, error }] = await Promise.all([
+    documentsAsyncData,
+    liveAsyncData,
+  ])
 
   const data = computed(() => {
     const currentDocuments = documents.value ?? []
