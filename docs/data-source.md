@@ -45,6 +45,8 @@ The fixture response already includes team IDs, names, kickoff timestamps, statu
 
 Venue fields are intentionally not included in the application fixture schema. During source validation, some venue values were less reliable than the fixture date/team data, and venue display is not required for the current product.
 
+The exact curl commands, Free-plan restriction response, Pro response shape, and kickoff-time spot checks are recorded in [`api-football-j1-validation.md`](api-football-j1-validation.md).
+
 ## Publication window
 
 The Lambda publishes from the configured lookback through lookahead window, currently one day back through 30 days ahead.
