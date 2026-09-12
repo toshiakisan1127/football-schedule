@@ -10,6 +10,8 @@ JST = ZoneInfo("Asia/Tokyo")
 BERLIN = ZoneInfo("Europe/Berlin")
 LOGGER = logging.getLogger(__name__)
 
+_MIN_ROUND_PLACEHOLDER_MATCHES = 3
+
 
 class BundesligaV2SelectionError(RuntimeError):
     pass
@@ -21,15 +23,22 @@ def select_canonical_fixtures(
     """Select one trustworthy KickoffAPI v2 record per Bundesliga match.
 
     KickoffAPI v2 can expose a canonical UTC record together with a sibling
-    whose Berlin wall-clock time is stored as though it were UTC. Single-record
-    groups are preserved. Duplicate groups are only collapsed when exactly one
-    candidate is verified by that Berlin wall-clock relationship. Unresolved
-    duplicate groups are preserved to avoid dropping fixtures on a provider-side
-    shape change.
+    whose Berlin wall-clock time is stored as though it were UTC. Those known
+    duplicate pairs are collapsed per match.
+
+    The provider can also keep a round-wide provisional schedule after adding
+    finalized kickoffs as new fixture records. That placeholder batch is only
+    removed when every match in the observed round has exactly two records and
+    exactly one timestamp contains one record for every match in that round.
+    Placeholder detection intentionally runs before the JST date-window filter
+    so a round split by the window boundary can still be identified safely.
+    Ambiguous provider shapes are preserved rather than guessed.
     """
 
+    fixtures = _drop_round_wide_placeholders(raw_fixtures)
+
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
-    for raw in raw_fixtures:
+    for raw in fixtures:
         groups[_group_key(raw)].append(raw)
 
     selected: list[dict[str, Any]] = []
@@ -72,6 +81,82 @@ def select_canonical_fixtures(
         selected.extend(relevant)
 
     return selected
+
+
+def _drop_round_wide_placeholders(
+    fixtures: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    fixtures_by_round: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for fixture in fixtures:
+        fixtures_by_round[_group_key(fixture)[2]].append(fixture)
+
+    placeholder_object_ids: set[int] = set()
+
+    for round_name, round_fixtures in fixtures_by_round.items():
+        fixtures_by_match: dict[
+            tuple[str, str, str], list[dict[str, Any]]
+        ] = defaultdict(list)
+        for fixture in round_fixtures:
+            fixtures_by_match[_group_key(fixture)].append(fixture)
+
+        match_count = len(fixtures_by_match)
+        if match_count < _MIN_ROUND_PLACEHOLDER_MATCHES:
+            continue
+        if any(len(candidates) != 2 for candidates in fixtures_by_match.values()):
+            continue
+
+        fixtures_by_kickoff: dict[datetime, list[dict[str, Any]]] = defaultdict(list)
+        for fixture in round_fixtures:
+            kickoff = fixture.get("date")
+            if not isinstance(kickoff, str):
+                raise BundesligaV2SelectionError(
+                    f"Bundesliga v2 fixture has invalid date: {fixture!r}"
+                )
+            kickoff_utc = _parse_datetime(kickoff).astimezone(timezone.utc)
+            fixtures_by_kickoff[kickoff_utc].append(fixture)
+
+        all_match_keys = set(fixtures_by_match)
+        candidates: list[tuple[datetime, list[dict[str, Any]]]] = []
+        for kickoff, batch in fixtures_by_kickoff.items():
+            if len(batch) != match_count:
+                continue
+            if not all(item.get("time") is None for item in batch):
+                continue
+
+            batch_match_keys = [_group_key(item) for item in batch]
+            if len(set(batch_match_keys)) != match_count:
+                continue
+            if set(batch_match_keys) != all_match_keys:
+                continue
+
+            candidates.append((kickoff, batch))
+
+        if len(candidates) == 1:
+            kickoff, batch = candidates[0]
+            LOGGER.warning(
+                "Dropping Bundesliga v2 round-wide placeholder fixture batch: "
+                "round=%r kickoff=%s matches=%d fixture_ids=%r",
+                round_name,
+                kickoff.isoformat(),
+                len(batch),
+                [item.get("id") for item in batch],
+            )
+            placeholder_object_ids.update(id(item) for item in batch)
+        elif len(candidates) > 1:
+            LOGGER.warning(
+                "Preserving ambiguous Bundesliga v2 round-wide duplicate batches: "
+                "round=%r candidates=%r",
+                round_name,
+                [
+                    {
+                        "kickoff": kickoff.isoformat(),
+                        "fixture_ids": [item.get("id") for item in batch],
+                    }
+                    for kickoff, batch in candidates
+                ],
+            )
+
+    return [fixture for fixture in fixtures if id(fixture) not in placeholder_object_ids]
 
 
 def _group_key(raw: dict[str, Any]) -> tuple[str, str, str]:
