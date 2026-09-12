@@ -294,7 +294,9 @@ const liveClockLabel = (fixture: Fixture) => {
 const statusLabel = (fixture: Fixture) => {
   if (fixture.status === 'live') {
     const clock = liveClockLabel(fixture)
-    const score = fixture.score ? `${fixture.score.home}–${fixture.score.away}` : null
+    const score = showResults.value && fixture.score
+      ? `${fixture.score.home}–${fixture.score.away}`
+      : null
     return ['LIVE', clock, score].filter(Boolean).join(' · ')
   }
   if (fixture.status === 'postponed') return '延期'
@@ -310,7 +312,7 @@ const resultLabel = (fixture: Fixture) => {
 const isLiveExpanded = (fixture: Fixture) => expandedLiveFixtures.value.has(fixture.id)
 
 const toggleLiveFixture = (fixture: Fixture) => {
-  if (fixture.status !== 'live' || !fixture.live) return
+  if (!showResults.value || fixture.status !== 'live' || !fixture.live) return
   const next = new Set(expandedLiveFixtures.value)
   if (next.has(fixture.id)) {
     next.delete(fixture.id)
@@ -419,6 +421,9 @@ const toggleTheme = () => {
 
 const toggleResults = () => {
   showResults.value = !showResults.value
+  if (!showResults.value) {
+    expandedLiveFixtures.value = new Set()
+  }
   localStorage.setItem('football-schedule-show-results', String(showResults.value))
 }
 
@@ -708,9 +713,9 @@ onUnmounted(() => {
             :key="fixture.id"
             class="fixture-row"
             :class="{ 'fixture-row--live': fixture.status === 'live' }"
-            :role="fixture.status === 'live' ? 'button' : undefined"
-            :tabindex="fixture.status === 'live' ? 0 : undefined"
-            :aria-expanded="fixture.status === 'live' ? isLiveExpanded(fixture) : undefined"
+            :role="fixture.status === 'live' && showResults ? 'button' : undefined"
+            :tabindex="fixture.status === 'live' && showResults ? 0 : undefined"
+            :aria-expanded="fixture.status === 'live' && showResults ? isLiveExpanded(fixture) : undefined"
             @click="toggleLiveFixture(fixture)"
             @keydown.enter.prevent="toggleLiveFixture(fixture)"
             @keydown.space.prevent="toggleLiveFixture(fixture)"
@@ -770,7 +775,7 @@ onUnmounted(() => {
             </div>
 
             <LiveFixtureEvents
-              v-if="fixture.status === 'live' && fixture.live && isLiveExpanded(fixture)"
+              v-if="showResults && fixture.status === 'live' && fixture.live && isLiveExpanded(fixture)"
               :events="fixture.live.events"
             />
           </div>
