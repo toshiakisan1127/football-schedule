@@ -115,10 +115,10 @@ def test_manual_j1_only_uses_api_football_and_publishes_j1(
         "country": "Japan",
     }
     assert document["fixtures"][0]["home"]["logo"] == (
-        "https://images.kickoffapi.com/images/logos/287.png?format=webp"
+        "https://media.api-sports.io/football/teams/287.png"
     )
     assert document["fixtures"][0]["away"]["logo"] == (
-        "https://images.kickoffapi.com/images/logos/310.png?format=webp"
+        "https://media.api-sports.io/football/teams/310.png"
     )
     assert document["fixtures"][0]["kickoff"] == "2026-09-13T09:30:00Z"
     assert result["competitions"][0]["competition"] == "j1"
