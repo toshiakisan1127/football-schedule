@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from api_football import LIVE_LEAGUE_IDS, fetch_live_fixtures
@@ -11,6 +11,8 @@ import handler as legacy
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
+
+LIVE_SNAPSHOT_TTL_MINUTES = 10
 
 LEAGUE_TO_COMPETITION = {
     39: "epl",
@@ -53,28 +55,33 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         raise
 
     LOGGER.info(
-        "Published live fixture snapshot: bucket=%s key=%s fixtures=%d bytes=%d",
+        "Published live fixture snapshot: bucket=%s key=%s fixtures=%d bytes=%d expires_at=%s",
         bucket_name,
         object_key,
         len(document["fixtures"]),
         len(body),
+        document["expiresAt"],
     )
     return {
         "ok": True,
         "objectKey": object_key,
         "fixtureCount": len(document["fixtures"]),
         "generatedAt": document["generatedAt"],
+        "expiresAt": document["expiresAt"],
     }
 
 
 def _build_live_document(raw_fixtures: list[dict[str, Any]]) -> dict[str, Any]:
     fixtures = [_normalize_live_fixture(item) for item in raw_fixtures]
     fixtures.sort(key=lambda fixture: fixture["id"])
+
+    generated_at = datetime.now(timezone.utc)
+    expires_at = generated_at + timedelta(minutes=LIVE_SNAPSHOT_TTL_MINUTES)
+
     return {
         "schemaVersion": 1,
-        "generatedAt": datetime.now(timezone.utc)
-        .isoformat(timespec="seconds")
-        .replace("+00:00", "Z"),
+        "generatedAt": _utc_iso(generated_at),
+        "expiresAt": _utc_iso(expires_at),
         "fixtures": fixtures,
     }
 
@@ -175,3 +182,7 @@ def _optional_string(value: Any) -> str | None:
 
 def _optional_id(value: Any) -> str | None:
     return None if value in (None, "") else str(value)
+
+
+def _utc_iso(value: datetime) -> str:
+    return value.isoformat(timespec="seconds").replace("+00:00", "Z")
