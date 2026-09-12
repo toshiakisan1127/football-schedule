@@ -41,7 +41,7 @@ J1 uses API-Football v3 because the current KickoffAPI feed does not provide the
 
 API-Football identifies the autumn-spring J1 season by its ending year, so dates in the second half of 2026 map to `season=2027`.
 
-The fixture response already includes team IDs, names, kickoff timestamps, status, scores, and team logo URLs. The app uses those logo URLs directly when no static mapping exists, so no additional logo request is required.
+The fixture response already includes team IDs, names, kickoff timestamps, status, scores, and team logo URLs. For J1, provider-specific normalization prefers the API-Football team logo when present; if it is missing, the existing static logo mapping remains as fallback. No additional logo request is required.
 
 Venue fields are intentionally not included in the application fixture schema. During source validation, some venue values were less reliable than the fixture date/team data, and venue display is not required for the current product.
 
