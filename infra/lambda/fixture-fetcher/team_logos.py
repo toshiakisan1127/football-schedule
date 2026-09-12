@@ -79,7 +79,7 @@ TEAM_LOGOS: dict[str, dict[str, str]] = {
         "Monaco": "https://images.kickoffapi.com/images/logos/91.png?format=webp",
         "Nice": "https://images.kickoffapi.com/images/logos/84.png?format=webp",
         "Paris FC": "https://images.kickoffapi.com/images/logos/114.png?format=webp",
-        "Paris Saint Germain": "https://images.kickoffapi.com/images/logos/85.png?format=webp",
+        "Paris Saint Germain": "https://media.api-sports.io/football/teams/85.png",
         "Rennes": "https://images.kickoffapi.com/images/logos/94.png?format=webp",
         "Stade Brestois 29": "https://images.kickoffapi.com/images/logos/106.png?format=webp",
         "Strasbourg": "https://images.kickoffapi.com/images/logos/95.png?format=webp",
