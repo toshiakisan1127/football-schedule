@@ -12,6 +12,7 @@ import boto3
 SNS = boto3.client("sns")
 TOPIC_ARN = os.environ["ALERT_TOPIC_ARN"]
 MAX_MESSAGE_BYTES = 240_000
+SUMMARY_MESSAGE = "Fixture refresh completed with failures"
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -77,6 +78,89 @@ def _truncate_utf8(value: str, max_bytes: int) -> str:
     return suffix
 
 
+def _parse_json_object(value: str) -> dict[str, Any] | None:
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _extract_failure_summary(raw_message: str) -> dict[str, Any] | None:
+    parsed = _parse_json_object(raw_message)
+    if parsed is None:
+        return None
+
+    if parsed.get("message") == SUMMARY_MESSAGE:
+        return parsed
+
+    nested_message = parsed.get("message")
+    if not isinstance(nested_message, str):
+        return None
+
+    nested = _parse_json_object(nested_message)
+    if nested is not None and nested.get("message") == SUMMARY_MESSAGE:
+        return nested
+
+    return None
+
+
+def _format_failure(summary: dict[str, Any]) -> list[str]:
+    competition = str(summary.get("competition", "?"))
+    provider = summary.get("provider")
+    provider_text = f" ({provider})" if provider else ""
+    error_type = str(summary.get("errorType", "Error"))
+    status = summary.get("statusCode")
+    status_text = f" (HTTP {status})" if status is not None else ""
+    error_message = str(summary.get("errorMessage", "")).strip()
+
+    lines = [f"- {competition}{provider_text}", f"  {error_type}{status_text}"]
+    if error_message:
+        lines.append(f"  {error_message}")
+    return lines
+
+
+def _format_summary_alert(
+    payload: dict[str, Any],
+    timestamp: str,
+    summary: dict[str, Any],
+) -> list[str]:
+    competitions = summary.get("failedCompetitions")
+    if not isinstance(competitions, list):
+        competitions = []
+
+    failure_count = summary.get("failureCount", len(competitions))
+    suffix = "competition" if failure_count == 1 else "competitions"
+    lines = [
+        "[FixtureFetcher] Fixture refresh failed",
+        "",
+        f"Cause: {summary.get('primaryCause', 'Unknown error')}",
+        f"Failed: {failure_count} {suffix}",
+    ]
+
+    failures = summary.get("failures")
+    if isinstance(failures, list) and failures:
+        for failure in failures:
+            if isinstance(failure, dict):
+                lines.extend(_format_failure(failure))
+    else:
+        lines.extend(f"- {competition}" for competition in competitions)
+
+    lines.extend(
+        [
+            "",
+            f"Request ID: {summary.get('requestId') or '-'}",
+            f"Time: {timestamp}",
+            f"Provider: {summary.get('provider', '-')}",
+            "",
+            "Debug",
+            f"logGroup: {payload.get('logGroup', '-')}",
+            f"logStream: {payload.get('logStream', '-')}",
+        ]
+    )
+    return lines
+
+
 def _format_alert(payload: dict[str, Any], log_events: list[Any]) -> list[str]:
     summaries: list[tuple[str, dict[str, Any]]] = []
     raw_events: list[tuple[str, str]] = []
@@ -87,48 +171,14 @@ def _format_alert(payload: dict[str, Any], log_events: list[Any]) -> list[str]:
         timestamp = _format_timestamp(item.get("timestamp"))
         raw_message = str(item.get("message", "")).rstrip()
         raw_events.append((timestamp, raw_message))
-        try:
-            parsed = json.loads(raw_message)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if isinstance(parsed, dict) and parsed.get("message") == "Fixture refresh completed with failures":
-            summaries.append((timestamp, parsed))
+
+        summary = _extract_failure_summary(raw_message)
+        if summary is not None:
+            summaries.append((timestamp, summary))
 
     if len(summaries) == 1:
         timestamp, summary = summaries[0]
-        competitions = summary.get("failedCompetitions")
-        if not isinstance(competitions, list):
-            competitions = []
-        lines = [
-            "[FixtureFetcher] Fixture refresh failed",
-            "",
-            f"Cause: {summary.get('primaryCause', 'Unknown error')}",
-            f"Failed: {summary.get('failureCount', len(competitions))} competitions",
-        ]
-        lines.extend(f"- {competition}" for competition in competitions)
-        lines.extend([
-            "",
-            f"Request ID: {summary.get('requestId') or '-'}",
-            f"Time: {timestamp}",
-            f"Provider: {summary.get('provider', '-')}",
-            f"logGroup: {payload.get('logGroup', '-')}",
-            f"logStream: {payload.get('logStream', '-')}",
-            "",
-            "Details:",
-        ])
-        failures = summary.get("failures")
-        if isinstance(failures, list):
-            for failure in failures:
-                if not isinstance(failure, dict):
-                    continue
-                status = failure.get("statusCode")
-                status_text = f" HTTP {status}" if status is not None else ""
-                lines.append(
-                    f"- {failure.get('competition', '?')}: "
-                    f"{failure.get('errorType', 'Error')}{status_text}: "
-                    f"{failure.get('errorMessage', '')}"
-                )
-        return lines
+        return _format_summary_alert(payload, timestamp, summary)
 
     lines = [
         "FixtureFetcher emitted ERROR logs.",
