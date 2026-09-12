@@ -37,7 +37,7 @@ J1 uses API-Football v3 because the current KickoffAPI feed does not provide the
 - current 2026/27 season identifier: `2027`
 - authentication header: `x-apisports-key`
 - fixture window: provider `from` / `to`, followed by the app's JST range validation
-- pagination: follows `paging.current` / `paging.total`
+- request model: one range request; `/fixtures` does not accept `page`
 
 API-Football identifies the autumn-spring J1 season by its ending year, so dates in the second half of 2026 map to `season=2027`.
 
@@ -45,7 +45,7 @@ The fixture response already includes team IDs, names, kickoff timestamps, statu
 
 Venue fields are intentionally not included in the application fixture schema. During source validation, some venue values were less reliable than the fixture date/team data, and venue display is not required for the current product.
 
-The exact curl commands, Free-plan restriction response, Pro response shape, and kickoff-time spot checks are recorded in [`api-football-j1-validation.md`](api-football-j1-validation.md).
+The exact curl commands, Free-plan restriction response, Pro response shape, kickoff-time spot checks, and the deployed `page` parameter failure are recorded in [`api-football-j1-validation.md`](api-football-j1-validation.md).
 
 ## Publication window
 
@@ -88,4 +88,4 @@ The FixtureFetcher Lambda receives only the parameter names through environment 
 
 ## Tests
 
-`pytest` covers provider routing, status mapping, v1/v2/API-Football fixture shapes, UTC conversion, JST date-window filtering, score/logo preservation, season selection, provider pagination, canonical-row selection, fail-closed behavior, API error handling, application document validation, manual single-competition refreshes, and partial-success multi-competition publishing.
+`pytest` covers provider routing, status mapping, v1/v2/API-Football fixture shapes, UTC conversion, JST date-window filtering, score/logo preservation, season selection, provider request behavior, canonical-row selection, fail-closed behavior, API error handling, application document validation, manual single-competition refreshes, and partial-success multi-competition publishing.
