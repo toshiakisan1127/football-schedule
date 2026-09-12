@@ -79,7 +79,7 @@ const isNullableString = (value: unknown): value is string | null =>
 
 const isLiveEvent = (value: unknown): value is LiveFixtureEvent => {
   if (!isRecord(value)) return false
-  if (!['goal', 'card', 'substitution'].includes(String(value.type))) return false
+  if (!['goal', 'card', 'substitution', 'var'].includes(String(value.type))) return false
   if (!isNullableString(value.detail)) return false
   if (!isNullableNumber(value.elapsed) || !isNullableNumber(value.extra)) return false
   if (!isNullableString(value.teamId) || !isNullableString(value.teamName)) return false
@@ -194,7 +194,8 @@ export const useFixtureDocuments = async (baseURL: string) => {
 
   const liveRefreshInterval = () => {
     const current = liveDocument.value ?? null
-    return isFreshLiveDocument(current) && current.fixtures.length > 0
+    if (!current || !isFreshLiveDocument(current)) return LIVE_IDLE_REFRESH_INTERVAL_MS
+    return current.fixtures.length > 0
       ? LIVE_ACTIVE_REFRESH_INTERVAL_MS
       : LIVE_IDLE_REFRESH_INTERVAL_MS
   }

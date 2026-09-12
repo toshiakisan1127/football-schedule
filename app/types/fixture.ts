@@ -17,7 +17,7 @@ export interface FixtureScore {
   away: number
 }
 
-export type LiveFixtureEventType = 'goal' | 'card' | 'substitution'
+export type LiveFixtureEventType = 'goal' | 'card' | 'substitution' | 'var'
 
 export interface LiveFixtureEvent {
   type: LiveFixtureEventType
