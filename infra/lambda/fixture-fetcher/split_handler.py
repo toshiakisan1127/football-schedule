@@ -18,14 +18,17 @@ LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
 LIGUE1_COMPETITION = legacy.Competition("ligue1", 61, "Ligue 1", "France")
-COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION)
+SERIE_A_COMPETITION = legacy.Competition("seriea", 135, "Serie A", "Italy")
+COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION, SERIE_A_COMPETITION)
 LIGUE1_V2_LEAGUE_ID = "fr.1"
+SERIE_A_V2_LEAGUE_ID = "it.1"
 
 OBJECT_FILENAMES = {
     "epl": "premier-league.json",
     "laliga": "laliga.json",
     "bundesliga": "bundesliga.json",
     "ligue1": "ligue1.json",
+    "seriea": "serie-a.json",
 }
 
 
@@ -178,6 +181,16 @@ def _fetch_competition_fixtures(
             len(selected),
         )
         return selected
+
+    if competition.app_id == "seriea":
+        return legacy._fetch_v2_fixture_pages(
+            api_key=api_key,
+            competition=competition,
+            league_id=SERIE_A_V2_LEAGUE_ID,
+            season=season,
+            from_date=from_date,
+            to_date=to_date,
+        )
 
     return legacy._fetch_competition_fixtures(
         api_key=api_key,

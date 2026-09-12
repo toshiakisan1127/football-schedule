@@ -203,4 +203,5 @@ def test_scheduler_default_includes_ligue1() -> None:
         "laliga",
         "bundesliga",
         "ligue1",
+        "seriea",
     ]
