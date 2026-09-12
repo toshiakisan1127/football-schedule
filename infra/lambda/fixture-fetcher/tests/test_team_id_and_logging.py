@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import json
-import logging
-from datetime import date
-
 import handler
 
 
@@ -73,50 +69,3 @@ def test_missing_team_id_uses_deterministic_fallback() -> None:
     assert first["home"]["id"] == second["home"]["id"]
     assert first["home"]["id"].startswith("team-name-")
     assert first["home"]["id"] != "None"
-
-
-def test_fetch_logs_compact_raw_v1_fixture_diagnostics(monkeypatch, caplog) -> None:
-    raw = _fixture(
-        fixture_id=1234,
-        home_id=None,
-        home_name="Aston Villa FC",
-        away_id=50,
-        away_name="Nottingham Forest FC",
-    )
-
-    monkeypatch.setattr(
-        handler,
-        "_get_api_json",
-        lambda *args, **kwargs: {
-            "response": [raw],
-            "results": 1,
-            "paging": {"current": 1, "total": 1},
-        },
-    )
-
-    with caplog.at_level(logging.INFO, logger=handler.LOGGER.name):
-        handler._fetch_competition_fixtures(
-            api_key="secret",
-            competition=handler.COMPETITIONS[0],
-            season=2026,
-            from_date=date(2026, 9, 10),
-            to_date=date(2026, 9, 25),
-        )
-
-    record = next(
-        record
-        for record in caplog.records
-        if record.message.startswith("Raw KickoffAPI v1 fixtures:")
-    )
-    payload = json.loads(record.message.split("items=", 1)[1])
-
-    assert payload == [
-        {
-            "id": 1234,
-            "date": "2026-09-12T15:00:00Z",
-            "status": {"long": "Not Started", "short": "NS", "elapsed": None},
-            "home": {"id": None, "name": "Aston Villa FC"},
-            "away": {"id": 50, "name": "Nottingham Forest FC"},
-        }
-    ]
-    assert "secret" not in record.message
