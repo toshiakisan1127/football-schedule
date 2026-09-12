@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Any
+from typing import Any, Iterable
 
 import requests
 
@@ -54,6 +54,37 @@ def fetch_fixtures(
         competition_label,
         league_id,
         season,
+        len(response_items),
+    )
+    return response_items
+
+
+def fetch_live_fixtures(
+    *,
+    api_key: str,
+    league_ids: Iterable[int],
+) -> list[dict[str, Any]]:
+    normalized_ids = tuple(dict.fromkeys(int(league_id) for league_id in league_ids))
+    if not normalized_ids:
+        raise ApiFootballError("At least one league ID is required for live fixtures")
+
+    payload = _get_json(
+        "/fixtures",
+        api_key=api_key,
+        params={
+            "live": "-".join(str(league_id) for league_id in normalized_ids),
+            "timezone": "Asia/Tokyo",
+        },
+    )
+    response_items = payload.get("response")
+    if not isinstance(response_items, list):
+        raise ApiFootballError(
+            "API-Football live response is missing a response list"
+        )
+
+    LOGGER.info(
+        "Raw API-Football live fixtures: leagues=%s count=%d",
+        "-".join(str(league_id) for league_id in normalized_ids),
         len(response_items),
     )
     return response_items
