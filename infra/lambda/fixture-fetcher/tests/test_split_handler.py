@@ -117,7 +117,7 @@ def test_european_competitions_use_api_football_league_ids(
     ("competition_id", "expected_span_days"),
     [
         ("laliga", 22),
-        ("j1", 22),
+        ("j1", 101),
         ("ucl", 36),
         ("uel", 36),
         ("uecl", 36),
