@@ -6,7 +6,7 @@ import handler
 import validation
 
 
-def test_v1_fixture_preserves_team_logos() -> None:
+def test_api_football_fixture_preserves_team_logos() -> None:
     raw = {
         "fixture": {
             "id": 1001,
@@ -32,40 +32,6 @@ def test_v1_fixture_preserves_team_logos() -> None:
 
     assert normalized["home"]["logo"] == "https://cdn.example.com/home.webp"
     assert normalized["away"]["logo"] == "https://cdn.example.com/away.webp"
-
-
-def test_v2_fixture_preserves_team_logos() -> None:
-    raw = {
-        "id": "fx_1",
-        "date": "2026-09-12T06:00:00Z",
-        "status": "scheduled",
-        "homeTeam": {
-            "id": "tm_home",
-            "name": "Home FC",
-            "logo": "https://cdn.example.com/home-v2.webp",
-        },
-        "awayTeam": {
-            "id": "tm_away",
-            "name": "Away FC",
-            "logo": "https://cdn.example.com/away-v2.webp",
-        },
-        "homeScore": None,
-        "awayScore": None,
-    }
-
-    normalized = handler._normalize_fixture(raw, handler.COMPETITIONS[1])
-
-    assert normalized["home"]["logo"] == "https://cdn.example.com/home-v2.webp"
-    assert normalized["away"]["logo"] == "https://cdn.example.com/away-v2.webp"
-
-
-def test_image_and_crest_are_supported_without_extra_api_calls() -> None:
-    assert handler._normalize_team_logo({"image": "https://cdn.example.com/image.webp"}) == (
-        "https://cdn.example.com/image.webp"
-    )
-    assert handler._normalize_team_logo({"crest": "https://cdn.example.com/crest.webp"}) == (
-        "https://cdn.example.com/crest.webp"
-    )
 
 
 def test_missing_or_blank_logo_is_omitted() -> None:

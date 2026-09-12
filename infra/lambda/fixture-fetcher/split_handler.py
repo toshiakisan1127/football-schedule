@@ -8,15 +8,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from api_football import fetch_fixtures, fetch_j1_fixtures
-import handler as legacy
+import handler as common
 from validation import SCHEMA_VERSION, FixtureDocumentValidationError, validate_fixture_document
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
-LIGUE1_COMPETITION = legacy.Competition("ligue1", 61, "Ligue 1", "France")
-J1_COMPETITION = legacy.Competition("j1", 98, "J1 League", "Japan")
-COMPETITIONS = (*legacy.COMPETITIONS, LIGUE1_COMPETITION, J1_COMPETITION)
+LIGUE1_COMPETITION = common.Competition("ligue1", 61, "Ligue 1", "France")
+J1_COMPETITION = common.Competition("j1", 98, "J1 League", "Japan")
+COMPETITIONS = (*common.COMPETITIONS, LIGUE1_COMPETITION, J1_COMPETITION)
 
 OBJECT_FILENAMES = {
     "epl": "premier-league.json",
@@ -28,16 +28,16 @@ OBJECT_FILENAMES = {
 
 
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
-    bucket_name = legacy._required_env("DATA_BUCKET_NAME")
+    bucket_name = common._required_env("DATA_BUCKET_NAME")
     object_prefix = os.getenv("FIXTURE_OBJECT_PREFIX", "data/fixtures").strip("/")
-    lookback_days = legacy._non_negative_int_env("LOOKBACK_DAYS", 1)
-    lookahead_days = legacy._non_negative_int_env("LOOKAHEAD_DAYS", 21)
+    lookback_days = common._non_negative_int_env("LOOKBACK_DAYS", 1)
+    lookahead_days = common._non_negative_int_env("LOOKAHEAD_DAYS", 21)
     competitions = _selected_competitions(event)
 
-    today_jst = datetime.now(legacy.JST).date()
+    today_jst = datetime.now(common.JST).date()
     from_date = today_jst - timedelta(days=lookback_days)
     to_date = today_jst + timedelta(days=lookahead_days)
-    season = legacy._season_for(today_jst)
+    season = common._season_for(today_jst)
 
     LOGGER.info(
         "Starting split fixture refresh: provider=API-Football from=%s to=%s season=%d competitions=%s",
@@ -64,7 +64,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
             )
             object_key = _object_key(object_prefix, competition.app_id)
             body = json.dumps(document, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-            legacy._publish_document(bucket_name=bucket_name, object_key=object_key, body=body)
+            common._publish_document(bucket_name=bucket_name, object_key=object_key, body=body)
             published.append(
                 {
                     "competition": competition.app_id,
@@ -106,7 +106,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         summary = ", ".join(
             f"{failure['competition']}: {failure['errorMessage']}" for failure in failures
         )
-        raise legacy.FixtureDataError(f"One or more competition refreshes failed: {summary}")
+        raise common.FixtureDataError(f"One or more competition refreshes failed: {summary}")
 
     return {
         "ok": True,
@@ -118,18 +118,18 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     }
 
 
-def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competition, ...]:
+def _selected_competitions(event: dict[str, Any] | None) -> tuple[common.Competition, ...]:
     if not isinstance(event, dict) or "competitions" not in event:
         return COMPETITIONS
 
     raw = event.get("competitions")
     if not isinstance(raw, list) or not raw:
-        raise legacy.FixtureDataError("competitions must be a non-empty array")
+        raise common.FixtureDataError("competitions must be a non-empty array")
     if any(not isinstance(item, str) or not item.strip() for item in raw):
-        raise legacy.FixtureDataError("competitions must contain non-empty competition IDs")
+        raise common.FixtureDataError("competitions must contain non-empty competition IDs")
 
     configured = {competition.app_id: competition for competition in COMPETITIONS}
-    selected: list[legacy.Competition] = []
+    selected: list[common.Competition] = []
     seen: set[str] = set()
 
     for raw_id in raw:
@@ -138,7 +138,7 @@ def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competi
             continue
         competition = configured.get(competition_id)
         if competition is None:
-            raise legacy.FixtureDataError(f"Unknown competition ID: {competition_id}")
+            raise common.FixtureDataError(f"Unknown competition ID: {competition_id}")
         seen.add(competition_id)
         selected.append(competition)
 
@@ -146,18 +146,18 @@ def _selected_competitions(event: dict[str, Any] | None) -> tuple[legacy.Competi
 
 
 def _load_api_football_key() -> str:
-    parameter_name = legacy._required_env("API_FOOTBALL_KEY_PARAMETER_NAME")
-    return legacy._load_api_key(parameter_name)
+    parameter_name = common._required_env("API_FOOTBALL_KEY_PARAMETER_NAME")
+    return common._load_api_key(parameter_name)
 
 
-def _provider_name(competition: legacy.Competition) -> str:
+def _provider_name(competition: common.Competition) -> str:
     return "API-Football"
 
 
 def _fetch_competition_fixtures(
     *,
     api_key: str,
-    competition: legacy.Competition,
+    competition: common.Competition,
     season: int,
     from_date: Any,
     to_date: Any,
@@ -194,17 +194,17 @@ def _fetch_competition_fixtures(
 
 def _normalize_provider_fixture(
     item: dict[str, Any],
-    competition: legacy.Competition,
+    competition: common.Competition,
     *,
     team_ids: dict[str, str],
 ) -> dict[str, Any]:
-    fixture = legacy._normalize_fixture(item, competition, team_ids=team_ids)
+    fixture = common._normalize_fixture(item, competition, team_ids=team_ids)
 
-    raw_home, raw_away = legacy._raw_teams(item)
+    raw_home, raw_away = common._raw_teams(item)
     for side, raw_team in (("home", raw_home), ("away", raw_away)):
         if not isinstance(raw_team, dict):
             continue
-        provider_logo = legacy._normalize_team_logo(raw_team)
+        provider_logo = common._normalize_team_logo(raw_team)
         if provider_logo is not None:
             fixture[side]["logo"] = provider_logo
 
@@ -214,7 +214,7 @@ def _normalize_provider_fixture(
 def _build_competition_document(
     *,
     api_key: str,
-    competition: legacy.Competition,
+    competition: common.Competition,
     season: int,
     from_date: Any,
     to_date: Any,
@@ -226,11 +226,11 @@ def _build_competition_document(
         from_date=from_date,
         to_date=to_date,
     )
-    team_ids = legacy._collect_team_ids(raw_fixtures)
+    team_ids = common._collect_team_ids(raw_fixtures)
     fixtures = [
         fixture
         for item in raw_fixtures
-        if legacy._fixture_in_window(
+        if common._fixture_in_window(
             fixture := _normalize_provider_fixture(item, competition, team_ids=team_ids),
             from_date=from_date,
             to_date=to_date,
@@ -256,7 +256,7 @@ def _build_competition_document(
 
 
 def _validate_competition_document(
-    document: dict[str, Any], competition: legacy.Competition
+    document: dict[str, Any], competition: common.Competition
 ) -> None:
     root_competition = document.get("competition")
     expected = {
@@ -265,14 +265,14 @@ def _validate_competition_document(
         "country": competition.country,
     }
     if root_competition != expected:
-        raise legacy.FixtureDataError(
+        raise common.FixtureDataError(
             f"Competition document metadata is invalid for {competition.app_id}"
         )
 
     try:
         validate_fixture_document(document, competition_ids={competition.app_id})
     except FixtureDocumentValidationError as exc:
-        raise legacy.FixtureDataError(
+        raise common.FixtureDataError(
             f"Fixture document validation failed for {competition.app_id}: {exc}"
         ) from exc
 
@@ -280,7 +280,7 @@ def _validate_competition_document(
 def _object_key(prefix: str, competition_id: str) -> str:
     filename = OBJECT_FILENAMES.get(competition_id)
     if filename is None:
-        raise legacy.FixtureDataError(f"No fixture object filename configured: {competition_id}")
+        raise common.FixtureDataError(f"No fixture object filename configured: {competition_id}")
     return f"{prefix}/{filename}" if prefix else filename
 
 
