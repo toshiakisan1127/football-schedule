@@ -13,6 +13,7 @@ type TeamFilter = {
 }
 
 const FIXTURE_TIME_ZONE = 'Asia/Tokyo'
+const CURRENT_WINDOW_LOOKBACK_MS = 2 * 60 * 60 * 1000
 
 const runtimeConfig = useRuntimeConfig()
 const baseURL = runtimeConfig.app.baseURL.endsWith('/')
@@ -38,6 +39,8 @@ const currentDate = ref<Date | null>(null)
 const theme = ref<Theme>('dark')
 const showResults = ref(false)
 const japaneseTeamsOnly = ref(false)
+const currentAndUpcomingOnly = ref(false)
+let currentDateTimer: ReturnType<typeof setInterval> | undefined
 
 const hasJapanesePlayer = (name: string) => japanesePlayersForTeam(name).length > 0
 
@@ -305,6 +308,11 @@ const filteredFixtures = computed(() => {
     )
   }
 
+  if (currentAndUpcomingOnly.value && currentDate.value) {
+    const threshold = currentDate.value.getTime() - CURRENT_WINDOW_LOOKBACK_MS
+    fixtures = fixtures.filter((fixture) => new Date(fixture.kickoff).getTime() >= threshold)
+  }
+
   if (!targetDateKeys.value) return fixtures
 
   return fixtures.filter((fixture) => targetDateKeys.value?.has(localDateKey(fixture.kickoff)))
@@ -355,7 +363,10 @@ const generatedAtLabel = computed(() => {
 
 const emptyMessage = computed(() => {
   const hasDisplayFilter =
-    !isAllCompetitionsSelected.value || !isAllTeamsSelected.value || japaneseTeamsOnly.value
+    !isAllCompetitionsSelected.value
+    || !isAllTeamsSelected.value
+    || japaneseTeamsOnly.value
+    || currentAndUpcomingOnly.value
   const prefix = hasDisplayFilter ? '条件に合う' : ''
 
   if (selectedFilter.value === 'all') return `${prefix}表示できる試合がありません。`
@@ -388,6 +399,11 @@ const toggleJapaneseTeamsOnly = () => {
   )
 }
 
+const toggleCurrentAndUpcomingOnly = () => {
+  currentDate.value = new Date()
+  currentAndUpcomingOnly.value = !currentAndUpcomingOnly.value
+}
+
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key !== 'Escape') return
 
@@ -401,6 +417,9 @@ watch([isLeagueSettingsOpen, isTeamSettingsOpen], ([leagueOpen, teamOpen]) => {
 
 onMounted(() => {
   currentDate.value = new Date()
+  currentDateTimer = setInterval(() => {
+    currentDate.value = new Date()
+  }, 60_000)
 
   const savedTheme = localStorage.getItem('football-schedule-theme')
   const initialTheme: Theme = savedTheme === 'light' || savedTheme === 'dark'
@@ -443,6 +462,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  if (currentDateTimer) clearInterval(currentDateTimer)
   document.body.style.overflow = ''
 })
 </script>
@@ -495,7 +515,17 @@ onUnmounted(() => {
       </button>
     </nav>
 
-    <nav class="quick-filters" aria-label="チームフィルター">
+    <nav class="quick-filters" aria-label="表示フィルター">
+      <button
+        type="button"
+        class="filter-button"
+        :class="{ 'filter-button--active': currentAndUpcomingOnly }"
+        :aria-pressed="currentAndUpcomingOnly"
+        title="現在時刻の2時間前以降にキックオフする試合を表示"
+        @click="toggleCurrentAndUpcomingOnly"
+      >
+        今から見る
+      </button>
       <button
         type="button"
         class="filter-button"
