@@ -5,6 +5,7 @@ import { useFixtureDocuments } from './composables/useFixtureDocuments'
 
 type DateFilter = 'all' | 'today' | 'tomorrow' | 'weekend'
 type Theme = 'light' | 'dark'
+type ShareStatus = 'idle' | 'copied' | 'error'
 
 type TeamFilter = {
   id: string
@@ -40,7 +41,9 @@ const theme = ref<Theme>('dark')
 const showResults = ref(false)
 const japaneseTeamsOnly = ref(false)
 const currentAndUpcomingOnly = ref(false)
+const shareStatus = ref<ShareStatus>('idle')
 let currentDateTimer: ReturnType<typeof setInterval> | undefined
+let shareStatusTimer: ReturnType<typeof setTimeout> | undefined
 
 const hasJapanesePlayer = (name: string) => japanesePlayersForTeam(name).length > 0
 
@@ -404,6 +407,61 @@ const toggleCurrentAndUpcomingOnly = () => {
   currentAndUpcomingOnly.value = !currentAndUpcomingOnly.value
 }
 
+const setShareStatus = (nextStatus: ShareStatus) => {
+  shareStatus.value = nextStatus
+  if (shareStatusTimer) clearTimeout(shareStatusTimer)
+  if (nextStatus !== 'idle') {
+    shareStatusTimer = setTimeout(() => {
+      shareStatus.value = 'idle'
+    }, 2000)
+  }
+}
+
+const copyCurrentUrl = async () => {
+  const url = window.location.href
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(url)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = url
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+
+  if (!copied) throw new Error('Could not copy page URL')
+}
+
+const sharePage = async () => {
+  const shareData = {
+    title: 'Match Calendar｜サッカー日程を日本時間で',
+    text: '日本時間でサッカーの試合日程をチェック',
+    url: window.location.href,
+  }
+
+  if (typeof navigator.share === 'function') {
+    try {
+      await navigator.share(shareData)
+      return
+    } catch (shareError) {
+      if (shareError instanceof DOMException && shareError.name === 'AbortError') return
+    }
+  }
+
+  try {
+    await copyCurrentUrl()
+    setShareStatus('copied')
+  } catch {
+    setShareStatus('error')
+  }
+}
+
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key !== 'Escape') return
 
@@ -463,6 +521,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   if (currentDateTimer) clearInterval(currentDateTimer)
+  if (shareStatusTimer) clearTimeout(shareStatusTimer)
   document.body.style.overflow = ''
 })
 </script>
@@ -478,6 +537,15 @@ onUnmounted(() => {
 
       <div class="header-meta">
         <div class="header-actions">
+          <button
+            type="button"
+            class="theme-toggle"
+            aria-label="このページを共有"
+            aria-live="polite"
+            @click="sharePage"
+          >
+            {{ shareStatus === 'copied' ? '✓ コピー済み' : shareStatus === 'error' ? '共有できません' : '↗ 共有' }}
+          </button>
           <button
             type="button"
             class="result-toggle"
