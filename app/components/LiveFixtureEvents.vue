@@ -10,10 +10,43 @@ const timeLabel = (event: LiveFixtureEvent) => {
   return event.extra ? `${event.elapsed}+${event.extra}'` : `${event.elapsed}'`
 }
 
+const detailKey = (event: LiveFixtureEvent) => event.detail?.trim().toLowerCase() ?? ''
+
 const eventIcon = (event: LiveFixtureEvent) => {
-  if (event.type === 'goal') return '⚽'
+  const detail = detailKey(event)
+
+  if (event.type === 'goal') {
+    return detail.includes('missed penalty') || detail.includes('cancelled') ? '✕' : '⚽'
+  }
   if (event.type === 'substitution') return '↔'
-  return event.detail?.toLowerCase().includes('red') ? '🟥' : '🟨'
+  if (event.type === 'var') return '↺'
+  return detail.includes('red') ? '🟥' : '🟨'
+}
+
+const goalLabel = (event: LiveFixtureEvent) => {
+  const detail = detailKey(event)
+  if (detail.includes('missed penalty')) return 'PK失敗'
+  if (detail.includes('own goal')) return 'オウンゴール'
+  if (detail === 'penalty') return 'PK'
+  if (detail.includes('cancelled')) return 'ゴール取消'
+  return null
+}
+
+const cardLabel = (event: LiveFixtureEvent) => {
+  const detail = detailKey(event)
+  if (detail.includes('yellow-red')) return '2枚目のイエロー'
+  if (detail.includes('red')) return 'レッドカード'
+  if (detail.includes('yellow')) return 'イエローカード'
+  return event.detail ?? 'カード'
+}
+
+const varLabel = (event: LiveFixtureEvent) => {
+  const detail = detailKey(event)
+  if (detail.includes('goal cancelled')) return 'VAR · ゴール取消'
+  if (detail.includes('goal confirmed')) return 'VAR · ゴール確認'
+  if (detail.includes('penalty cancelled')) return 'VAR · PK取消'
+  if (detail.includes('penalty confirmed')) return 'VAR · PK判定'
+  return event.detail ? `VAR · ${event.detail}` : 'VAR'
 }
 
 const eventText = (event: LiveFixtureEvent) => {
@@ -22,19 +55,20 @@ const eventText = (event: LiveFixtureEvent) => {
     return event.player ?? event.assist ?? '交代'
   }
 
+  if (event.type === 'var') return varLabel(event)
+
   if (event.type === 'goal') {
     const scorer = event.player ?? '得点'
-    return event.assist ? `${scorer}（${event.assist}）` : scorer
+    const playerLabel = event.assist ? `${scorer}（${event.assist}）` : scorer
+    const label = goalLabel(event)
+    return label ? `${playerLabel} · ${label}` : playerLabel
   }
 
-  return event.player ?? event.detail ?? 'カード'
+  const player = event.player ?? 'カード'
+  return `${player} · ${cardLabel(event)}`
 }
 
-const eventDetail = (event: LiveFixtureEvent) => {
-  if (event.type === 'card') return event.detail
-  if (event.type === 'goal' && event.detail && event.detail !== 'Normal Goal') return event.detail
-  return event.teamName
-}
+const eventDetail = (event: LiveFixtureEvent) => event.teamName
 </script>
 
 <template>
