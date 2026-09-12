@@ -10,6 +10,7 @@ LOGGER = logging.getLogger()
 API_BASE_URL = "https://v3.football.api-sports.io"
 PREMIER_LEAGUE_ID = 39
 J1_LEAGUE_ID = 98
+LIVE_LEAGUE_IDS = (39, 140, 78, 61, 98, 2, 3, 848)
 
 _http = requests.Session()
 _http.headers.update({"User-Agent": "football-schedule-fixture-fetcher/1.0"})
@@ -54,6 +55,35 @@ def fetch_fixtures(
         competition_label,
         league_id,
         season,
+        len(response_items),
+    )
+    return response_items
+
+
+def fetch_live_fixtures(
+    *,
+    api_key: str,
+    league_ids: tuple[int, ...] = LIVE_LEAGUE_IDS,
+    timezone: str = "Asia/Tokyo",
+) -> list[dict[str, Any]]:
+    if not league_ids:
+        raise ValueError("league_ids must not be empty")
+
+    payload = _get_json(
+        "/fixtures",
+        api_key=api_key,
+        params={
+            "live": "-".join(str(league_id) for league_id in league_ids),
+            "timezone": timezone,
+        },
+    )
+    response_items = payload.get("response")
+    if not isinstance(response_items, list):
+        raise ApiFootballError("API-Football live response is missing a response list")
+
+    LOGGER.info(
+        "Raw API-Football live fixtures: leagues=%s count=%d",
+        "-".join(str(league_id) for league_id in league_ids),
         len(response_items),
     )
     return response_items
