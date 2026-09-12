@@ -2,20 +2,39 @@ from __future__ import annotations
 
 import base64
 import gzip
+import hashlib
 import json
+import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
 
 SNS = boto3.client("sns")
+DYNAMODB = boto3.client("dynamodb")
 TOPIC_ARN = os.environ["ALERT_TOPIC_ARN"]
+STATE_TABLE_NAME = os.getenv("ALERT_STATE_TABLE_NAME", "")
+COOLDOWN_SECONDS = int(os.getenv("ALERT_COOLDOWN_SECONDS", "21600"))
+STATE_TTL_SECONDS = int(os.getenv("ALERT_STATE_TTL_SECONDS", "86400"))
 MAX_MESSAGE_BYTES = 240_000
 SUMMARY_MESSAGE = "Fixture refresh completed with failures"
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.INFO)
+VOLATILE_FINGERPRINT_KEYS = {
+    "timestamp",
+    "requestId",
+    "request_id",
+    "awsRequestId",
+    "stackTrace",
+    "logStream",
+}
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    del context
     payload = _decode_logs_payload(event)
 
     if payload.get("messageType") == "CONTROL_MESSAGE":
@@ -25,16 +44,84 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if not isinstance(log_events, list) or not log_events:
         return {"ok": True, "ignored": True, "eventCount": 0}
 
+    fingerprint = _build_alert_fingerprint(payload, log_events)
+    now_epoch = int(time.time())
+    if not _claim_notification(fingerprint, now_epoch):
+        LOGGER.info("Suppressed repeated error alert: fingerprint=%s", fingerprint)
+        return {
+            "ok": True,
+            "ignored": True,
+            "suppressed": True,
+            "eventCount": len(log_events),
+            "fingerprint": fingerprint,
+        }
+
     lines = _format_alert(payload, log_events)
     message = _truncate_utf8("\n".join(lines), MAX_MESSAGE_BYTES)
 
-    SNS.publish(
-        TopicArn=TOPIC_ARN,
-        Subject="[Match Calendar] Fixture batch ERROR",
-        Message=message,
-    )
+    try:
+        SNS.publish(
+            TopicArn=TOPIC_ARN,
+            Subject="[Match Calendar] Fixture batch ERROR",
+            Message=message,
+        )
+    except Exception:
+        _release_notification_claim(fingerprint, now_epoch)
+        raise
 
-    return {"ok": True, "ignored": False, "eventCount": len(log_events)}
+    return {
+        "ok": True,
+        "ignored": False,
+        "suppressed": False,
+        "eventCount": len(log_events),
+        "fingerprint": fingerprint,
+    }
+
+
+def _claim_notification(fingerprint: str, now_epoch: int) -> bool:
+    if not STATE_TABLE_NAME:
+        LOGGER.error("ALERT_STATE_TABLE_NAME is not configured; sending alert without throttling")
+        return True
+
+    cutoff = now_epoch - COOLDOWN_SECONDS
+    expires_at = now_epoch + STATE_TTL_SECONDS
+    try:
+        DYNAMODB.update_item(
+            TableName=STATE_TABLE_NAME,
+            Key={"fingerprint": {"S": fingerprint}},
+            UpdateExpression="SET lastNotifiedAt = :now, expiresAt = :expiresAt",
+            ConditionExpression=(
+                "attribute_not_exists(fingerprint) OR lastNotifiedAt <= :cutoff"
+            ),
+            ExpressionAttributeValues={
+                ":now": {"N": str(now_epoch)},
+                ":cutoff": {"N": str(cutoff)},
+                ":expiresAt": {"N": str(expires_at)},
+            },
+        )
+        return True
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        LOGGER.exception("Failed to update alert throttle state; sending alert fail-open")
+        return True
+    except Exception:
+        LOGGER.exception("Failed to update alert throttle state; sending alert fail-open")
+        return True
+
+
+def _release_notification_claim(fingerprint: str, now_epoch: int) -> None:
+    if not STATE_TABLE_NAME:
+        return
+    try:
+        DYNAMODB.delete_item(
+            TableName=STATE_TABLE_NAME,
+            Key={"fingerprint": {"S": fingerprint}},
+            ConditionExpression="lastNotifiedAt = :now",
+            ExpressionAttributeValues={":now": {"N": str(now_epoch)}},
+        )
+    except Exception:
+        LOGGER.exception("Failed to release alert throttle claim after SNS publish failure")
 
 
 def _decode_logs_payload(event: dict[str, Any]) -> dict[str, Any]:
@@ -103,6 +190,47 @@ def _extract_failure_summary(raw_message: str) -> dict[str, Any] | None:
         return nested
 
     return None
+
+
+def _normalize_fingerprint_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _normalize_fingerprint_value(item)
+            for key, item in sorted(value.items())
+            if key not in VOLATILE_FINGERPRINT_KEYS
+        }
+    if isinstance(value, list):
+        return [_normalize_fingerprint_value(item) for item in value]
+    if isinstance(value, str):
+        nested = _parse_json_object(value)
+        if nested is not None:
+            return _normalize_fingerprint_value(nested)
+        return value.strip()
+    return value
+
+
+def _event_fingerprint_identity(item: Any) -> Any:
+    if not isinstance(item, dict):
+        return str(item)
+
+    raw_message = str(item.get("message", "")).strip()
+    summary = _extract_failure_summary(raw_message)
+    if summary is not None:
+        return _normalize_fingerprint_value(summary)
+
+    parsed = _parse_json_object(raw_message)
+    if parsed is not None:
+        return _normalize_fingerprint_value(parsed)
+    return raw_message
+
+
+def _build_alert_fingerprint(payload: dict[str, Any], log_events: list[Any]) -> str:
+    identity = {
+        "logGroup": payload.get("logGroup", "-"),
+        "events": [_event_fingerprint_identity(item) for item in log_events],
+    }
+    serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def _format_failure(summary: dict[str, Any]) -> list[str]:
