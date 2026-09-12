@@ -24,27 +24,32 @@ def select_canonical_fixtures(
 
     KickoffAPI v2 can expose a canonical UTC record together with a sibling
     whose Berlin wall-clock time is stored as though it were UTC. Those known
-    duplicate pairs are collapsed first.
+    duplicate pairs are collapsed per match.
 
     The provider can also keep a round-wide provisional schedule after adding
     finalized kickoffs as new fixture records. That placeholder batch is only
     removed when every match in the observed round has exactly two records and
     exactly one timestamp contains one record for every match in that round.
+    Placeholder detection intentionally runs before the JST date-window filter
+    so a round split by the window boundary can still be identified safely.
     Ambiguous provider shapes are preserved rather than guessed.
     """
 
-    relevant_fixtures = [
-        raw
-        for raw in raw_fixtures
-        if _candidate_in_window(raw, from_date=from_date, to_date=to_date)
-    ]
+    fixtures = _drop_round_wide_placeholders(raw_fixtures)
 
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
-    for raw in relevant_fixtures:
+    for raw in fixtures:
         groups[_group_key(raw)].append(raw)
 
     selected: list[dict[str, Any]] = []
-    for key, relevant in groups.items():
+    for key, candidates in groups.items():
+        relevant = [
+            candidate
+            for candidate in candidates
+            if _candidate_in_window(candidate, from_date=from_date, to_date=to_date)
+        ]
+        if not relevant:
+            continue
         if len(relevant) == 1:
             selected.append(relevant[0])
             continue
@@ -75,7 +80,7 @@ def select_canonical_fixtures(
         )
         selected.extend(relevant)
 
-    return _drop_round_wide_placeholders(selected)
+    return selected
 
 
 def _drop_round_wide_placeholders(
