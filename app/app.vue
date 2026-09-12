@@ -430,9 +430,18 @@ const toggleJapaneseTeamsOnly = () => {
   )
 }
 
+const setDateFilter = (nextFilter: DateFilter) => {
+  selectedFilter.value = nextFilter
+  localStorage.setItem('football-schedule-date-filter', nextFilter)
+}
+
 const toggleCurrentAndUpcomingOnly = () => {
   currentDate.value = new Date()
   currentAndUpcomingOnly.value = !currentAndUpcomingOnly.value
+  localStorage.setItem(
+    'football-schedule-current-and-upcoming-only',
+    String(currentAndUpcomingOnly.value),
+  )
 }
 
 const setShareStatus = (nextStatus: ShareStatus) => {
@@ -518,6 +527,13 @@ onMounted(() => {
   showResults.value = localStorage.getItem('football-schedule-show-results') === 'true'
   japaneseTeamsOnly.value =
     localStorage.getItem('football-schedule-japanese-teams-only') === 'true'
+  currentAndUpcomingOnly.value =
+    localStorage.getItem('football-schedule-current-and-upcoming-only') === 'true'
+
+  const savedDateFilter = localStorage.getItem('football-schedule-date-filter')
+  if (dateFilters.some((filter) => filter.value === savedDateFilter)) {
+    selectedFilter.value = savedDateFilter as DateFilter
+  }
 
   const savedCompetitions = localStorage.getItem('football-schedule-competitions')
   if (savedCompetitions) {
@@ -605,7 +621,7 @@ onUnmounted(() => {
         class="filter-button"
         :class="{ 'filter-button--active': selectedFilter === filter.value }"
         :aria-pressed="selectedFilter === filter.value"
-        @click="selectedFilter = filter.value"
+        @click="setDateFilter(filter.value)"
       >
         {{ filter.label }}
       </button>
