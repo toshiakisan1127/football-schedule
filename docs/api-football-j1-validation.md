@@ -183,6 +183,23 @@ For the initial J1 rollout:
 - Credential: SSM SecureString `/football-schedule/api-football-pro-key`
 - Output: normalized app-owned schema in `data/fixtures/j1.json`
 - Refresh cadence: same daily batch as the other competitions
+- Fixture request: one `from` / `to` request without `page`
 - Existing European competitions remain on KickoffAPI for this PR
 
 The provider code is kept isolated so other competitions can be migrated to API-Football later without changing the frontend contract.
+
+## 7. First deployed request failure: unsupported `page`
+
+On 2026-09-13 JST, the first manual J1-only Lambda test failed before publishing. The provider returned an API error indicating that the `page` field does not exist for the fixtures endpoint.
+
+The deployed adapter had assumed generic API pagination and sent `page=1`, even though the successful validation curl had not used that parameter. This was a regression introduced by the adapter, not an API key or plan problem.
+
+Correction:
+
+- remove `page` from `/fixtures` parameters,
+- remove the paging loop for J1,
+- fetch the configured date range once,
+- keep the response `paging` object informational only,
+- add a regression test asserting that the J1 request contains only `league`, `season`, `from`, and `to`.
+
+This incident is why the J1 adapter intentionally does not share generic pagination behavior with other provider endpoints.
