@@ -3,6 +3,12 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 
 .theme-toggle {
-  width: 4.75rem;
+  width: 4.25rem;
   white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .theme-toggle {
+    width: 4rem;
+  }
 }
