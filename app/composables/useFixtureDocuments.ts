@@ -17,7 +17,8 @@ const FIXTURE_SOURCES = [
   { id: 'uecl', file: 'conference-league.json' },
 ] as const
 
-const LIVE_REFRESH_INTERVAL_MS = 3 * 60_000
+const LIVE_ACTIVE_REFRESH_INTERVAL_MS = 60_000
+const LIVE_IDLE_REFRESH_INTERVAL_MS = 5 * 60_000
 
 const sortDocuments = (documents: FixtureDocument[]) =>
   [...documents].sort((a, b) => a.competition.id.localeCompare(b.competition.id))
@@ -156,14 +157,48 @@ export const useFixtureDocuments = async (baseURL: string) => {
 
   const { data: liveDocument, refresh: refreshLiveDocument } = liveAsyncData
 
-  let liveRefreshTimer: ReturnType<typeof setInterval> | undefined
+  let liveRefreshTimer: ReturnType<typeof setTimeout> | undefined
+
+  const clearLiveRefreshTimer = () => {
+    if (!liveRefreshTimer) return
+    clearTimeout(liveRefreshTimer)
+    liveRefreshTimer = undefined
+  }
+
+  const liveRefreshInterval = () => {
+    const current = liveDocument.value ?? null
+    return isFreshLiveDocument(current) && current.fixtures.length > 0
+      ? LIVE_ACTIVE_REFRESH_INTERVAL_MS
+      : LIVE_IDLE_REFRESH_INTERVAL_MS
+  }
+
+  const scheduleLiveRefresh = () => {
+    clearLiveRefreshTimer()
+    if (document.visibilityState !== 'visible') return
+
+    liveRefreshTimer = setTimeout(async () => {
+      await refreshLiveDocument()
+      scheduleLiveRefresh()
+    }, liveRefreshInterval())
+  }
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState !== 'visible') {
+      clearLiveRefreshTimer()
+      return
+    }
+
+    clearLiveRefreshTimer()
+    void refreshLiveDocument().finally(scheduleLiveRefresh)
+  }
+
   onMounted(() => {
-    liveRefreshTimer = setInterval(() => {
-      void refreshLiveDocument()
-    }, LIVE_REFRESH_INTERVAL_MS)
+    scheduleLiveRefresh()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
   })
   onUnmounted(() => {
-    if (liveRefreshTimer) clearInterval(liveRefreshTimer)
+    clearLiveRefreshTimer()
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
   })
 
   const [{ data: documents, status, error }] = await Promise.all([
