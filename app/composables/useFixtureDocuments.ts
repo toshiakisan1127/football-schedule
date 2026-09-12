@@ -175,8 +175,9 @@ export const useFixtureDocuments = async (baseURL: string) => {
     const currentDocuments = documents.value ?? []
     if (currentDocuments.length === 0) return null
 
-    const liveFixtures = isFreshLiveDocument(liveDocument.value)
-      ? new Map(liveDocument.value?.fixtures.map((fixture) => [fixture.id, fixture]) ?? [])
+    const currentLiveDocument = liveDocument.value ?? null
+    const liveFixtures = isFreshLiveDocument(currentLiveDocument)
+      ? new Map(currentLiveDocument?.fixtures.map((fixture) => [fixture.id, fixture]) ?? [])
       : new Map<string, LiveFixtureSnapshot>()
 
     const fixtures = currentDocuments
