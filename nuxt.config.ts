@@ -6,6 +6,20 @@ const siteTitle = 'Match Calendar｜欧州・日本のフットボール日程�
 const siteDescription = '欧州と日本のフットボール日程を日本時間でシンプルに確認。今日・明日・今週末、好きなチーム、日本人選手所属チームで絞り込める無料の試合日程アプリ。'
 const ogImageUrl = new URL('og-image.png', siteUrl).toString()
 const brandColor = '#0F6B3A'
+const themeInitScript = `(() => {
+  try {
+    const savedTheme = localStorage.getItem('football-schedule-theme')
+    const theme = savedTheme === 'light' || savedTheme === 'dark'
+      ? savedTheme
+      : window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+
+    document.documentElement.dataset.theme = theme
+  } catch {
+    // Keep the CSS prefers-color-scheme fallback when storage is unavailable.
+  }
+})()`
 
 export default defineNuxtConfig({
   ssr: true,
@@ -63,6 +77,9 @@ export default defineNuxtConfig({
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
       ],
       script: [
+        {
+          innerHTML: themeInitScript,
+        },
         {
           type: 'application/ld+json',
           innerHTML: JSON.stringify({
