@@ -8,6 +8,7 @@ import requests
 
 LOGGER = logging.getLogger()
 API_BASE_URL = "https://v3.football.api-sports.io"
+PREMIER_LEAGUE_ID = 39
 J1_LEAGUE_ID = 98
 
 _http = requests.Session()
@@ -23,18 +24,20 @@ def j1_season_for(reference_date: date) -> int:
     return reference_date.year + 1 if reference_date.month >= 7 else reference_date.year
 
 
-def fetch_j1_fixtures(
+def fetch_fixtures(
     *,
     api_key: str,
+    league_id: int,
+    season: int,
     from_date: date,
     to_date: date,
+    competition_label: str,
 ) -> list[dict[str, Any]]:
-    season = j1_season_for(from_date)
     payload = _get_json(
         "/fixtures",
         api_key=api_key,
         params={
-            "league": J1_LEAGUE_ID,
+            "league": league_id,
             "season": season,
             "from": from_date.isoformat(),
             "to": to_date.isoformat(),
@@ -42,14 +45,51 @@ def fetch_j1_fixtures(
     )
     response_items = payload.get("response")
     if not isinstance(response_items, list):
-        raise ApiFootballError("API-Football response is missing a response list for J1")
+        raise ApiFootballError(
+            f"API-Football response is missing a response list for {competition_label}"
+        )
 
     LOGGER.info(
-        "Raw API-Football J1 fixtures: season=%d count=%d",
+        "Raw API-Football fixtures: competition=%s league=%d season=%d count=%d",
+        competition_label,
+        league_id,
         season,
         len(response_items),
     )
     return response_items
+
+
+def fetch_premier_league_fixtures(
+    *,
+    api_key: str,
+    season: int,
+    from_date: date,
+    to_date: date,
+) -> list[dict[str, Any]]:
+    return fetch_fixtures(
+        api_key=api_key,
+        league_id=PREMIER_LEAGUE_ID,
+        season=season,
+        from_date=from_date,
+        to_date=to_date,
+        competition_label="Premier League",
+    )
+
+
+def fetch_j1_fixtures(
+    *,
+    api_key: str,
+    from_date: date,
+    to_date: date,
+) -> list[dict[str, Any]]:
+    return fetch_fixtures(
+        api_key=api_key,
+        league_id=J1_LEAGUE_ID,
+        season=j1_season_for(from_date),
+        from_date=from_date,
+        to_date=to_date,
+        competition_label="J1",
+    )
 
 
 def _get_json(path: str, *, api_key: str, params: dict[str, Any]) -> dict[str, Any]:
