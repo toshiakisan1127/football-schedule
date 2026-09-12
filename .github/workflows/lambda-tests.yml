@@ -17,7 +17,56 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      lambda: ${{ steps.filter.outputs.lambda }}
+      cdk: ${{ steps.filter.outputs.cdk }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'lambda=true' >> "$GITHUB_OUTPUT"
+            echo 'cdk=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          changed_files=$(git diff --name-only "$base_sha" "$head_sha")
+          printf '%s\n' "$changed_files"
+
+          if grep -Eq '^infra/lambda/|^\.github/workflows/lambda-tests\.yml$' <<< "$changed_files"; then
+            echo 'lambda=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'lambda=false' >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^infra/(?!lambda/).*\.tsx?$|^infra/package(-lock)?\.json$|^package(-lock)?\.json$|^\.github/workflows/lambda-tests\.yml$' <<< "$changed_files"; then
+            echo 'cdk=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'cdk=false' >> "$GITHUB_OUTPUT"
+          fi
+
   test:
+    needs: changes
+    if: needs.changes.outputs.lambda == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -52,6 +101,8 @@ jobs:
           )
 
   infra-typecheck:
+    needs: changes
+    if: needs.changes.outputs.cdk == 'true'
     runs-on: ubuntu-latest
 
     steps:
