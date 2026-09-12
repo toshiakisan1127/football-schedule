@@ -45,7 +45,7 @@ def test_static_logo_snapshot_has_expected_known_teams() -> None:
         "https://images.kickoffapi.com/images/logos/157.png?format=webp"
     )
     assert get_static_team_logo("ligue1", "Paris Saint Germain") == (
-        "https://images.kickoffapi.com/images/logos/85.png?format=webp"
+        "https://media.api-sports.io/football/teams/85.png"
     )
     assert get_static_team_logo("j1", "Kawasaki Frontale") == (
         "https://images.kickoffapi.com/images/logos/294.png?format=webp"
