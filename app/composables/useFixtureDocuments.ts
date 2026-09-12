@@ -87,11 +87,7 @@ const isLiveFixtureDocument = (value: unknown): value is LiveFixtureDocument => 
 }
 
 export const useFixtureDocuments = async (baseURL: string) => {
-  const {
-    data: documents,
-    status,
-    error,
-  } = await useAsyncData<FixtureDocument[]>(
+  const fixtureAsyncData = useAsyncData<FixtureDocument[]>(
     'fixture-documents',
     async () => {
       const results = await Promise.allSettled(
@@ -120,10 +116,7 @@ export const useFixtureDocuments = async (baseURL: string) => {
     { server: false },
   )
 
-  const {
-    data: liveDocument,
-    refresh: refreshLive,
-  } = await useAsyncData<LiveFixtureDocument | null>(
+  const liveAsyncData = useAsyncData<LiveFixtureDocument | null>(
     'live-fixtures',
     async () => {
       try {
@@ -137,6 +130,14 @@ export const useFixtureDocuments = async (baseURL: string) => {
     },
     { server: false, default: () => null },
   )
+
+  const [fixtureState, liveState] = await Promise.all([
+    fixtureAsyncData,
+    liveAsyncData,
+  ])
+
+  const { data: documents, status, error } = fixtureState
+  const { data: liveDocument, refresh: refreshLive } = liveState
 
   const data = computed(() => {
     const currentDocuments = documents.value ?? []
